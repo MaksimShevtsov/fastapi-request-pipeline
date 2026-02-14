@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "fastapi-request-pipeline"
 version = "0.1.0"
 description = "A composable request processing pipeline for FastAPI"
-# readme = "README.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
