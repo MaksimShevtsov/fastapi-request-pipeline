@@ -21,7 +21,7 @@ Feature 001-request-pipeline is implemented with full test coverage (198 tests).
 ## Commands
 
 - Install: `uv sync`
-- Install with dev deps: `uv sync --dev`
+- Install with dev deps: `uv sync --extra dev`
 - Test: `uv run pytest`
 - Single test: `uv run pytest tests/test_foo.py::TestBar::test_baz -v`
 - Lint: `uv run ruff check .`

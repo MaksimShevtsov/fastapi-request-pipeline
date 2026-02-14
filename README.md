@@ -14,7 +14,7 @@ pip install fastapi-request-pipeline
 ## Development
 
 ```bash
-uv sync --dev
+uv sync --extra dev
 uv run pytest
 uv run ruff check .
 uv run mypy --strict src/

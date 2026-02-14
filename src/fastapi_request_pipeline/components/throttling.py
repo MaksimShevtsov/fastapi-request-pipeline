@@ -73,6 +73,10 @@ class RateLimit(FlowComponent):
         key_func: Callable[[RequestContext], str] | None = None,
         backend: ThrottleBackend | None = None,
     ) -> None:
+        if rate <= 0:
+            raise ValueError(f"rate must be positive, got {rate}")
+        if window_seconds <= 0:
+            raise ValueError(f"window_seconds must be positive, got {window_seconds}")
         self._rate = rate
         self._window_seconds = window_seconds
         self._key_func = key_func or _default_key_func
