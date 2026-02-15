@@ -14,6 +14,8 @@ uv sync --extra dev
 uv run python examples/01_basic_usage.py
 ```
 
+> **Note:** These examples cannot be run with `uvicorn examples.01_basic_usage:app` because Python module names cannot start with digits. Each example includes a `__main__` block that runs uvicorn with appropriate settings when executed directly.
+
 ## Example Files
 
 ### 01_basic_usage.py
