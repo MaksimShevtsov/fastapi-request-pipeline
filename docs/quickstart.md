@@ -29,7 +29,7 @@ async def decode_jwt(token: str) -> dict:
     # For production, use python-jose or PyJWT
     # This is a mock implementation
     if token == "valid-token":
-        return {"sub": "user123", "email": "user@example.com"}
+        return {"sub": "user123", "email": "user@example.com", "roles": ["user"]}
     raise ValueError("Invalid token")
 
 # Step 2: Create a flow
@@ -154,6 +154,14 @@ Compose flows at different levels:
 ```python
 from fastapi import APIRouter
 from fastapi_request_pipeline import merge_flows
+
+# Update decoder to support roles for admin checks
+async def decode_jwt(token: str) -> dict:
+    if token == "admin-token":
+        return {"sub": "admin", "roles": ["admin"]}
+    if token == "user-token":
+        return {"sub": "user", "roles": ["user"]}
+    raise ValueError("Invalid token")
 
 # Application-level: All endpoints require auth and basic rate limiting
 app_flow = Flow(
