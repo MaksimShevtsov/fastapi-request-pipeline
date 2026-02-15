@@ -9,6 +9,7 @@ Demonstrates:
 """
 
 from fastapi import Depends, FastAPI
+
 from fastapi_request_pipeline import (
     Flow,
     JWTAuthentication,
@@ -31,35 +32,30 @@ async def decode_jwt(token: str) -> dict:
 
 
 # Basic rate limiting - 10 requests per minute
-basic_flow = Flow(
-    RateLimit(rate=10, window_seconds=60)
-)
+basic_flow = Flow(RateLimit(rate=10, window_seconds=60))
 
 
 @app.get("/public")
-async def public_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(basic_flow))
-):
+async def public_endpoint(ctx: RequestContext = Depends(flow_dependency(basic_flow))):
     """Public endpoint with IP-based rate limiting: 10 req/min."""
     return {"message": "Public endpoint", "client": ctx.request.client}
 
 
 # Authenticated rate limiting - per user
 auth_flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    RateLimit(rate=100, window_seconds=60)
+    JWTAuthentication(decode=decode_jwt), RateLimit(rate=100, window_seconds=60)
 )
 
 
 @app.get("/api/data")
 async def authenticated_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(auth_flow))
+    ctx: RequestContext = Depends(flow_dependency(auth_flow)),
 ):
     """Authenticated endpoint: 100 req/min per user."""
     return {
         "message": "Data endpoint",
         "user": ctx.user["sub"],
-        "tier": ctx.user["tier"]
+        "tier": ctx.user["tier"],
     }
 
 
@@ -79,42 +75,32 @@ def tier_based_key(ctx: RequestContext) -> str:
 
 premium_flow = Flow(
     JWTAuthentication(decode=decode_jwt),
-    RateLimit(
-        rate=1000,
-        window_seconds=3600,
-        key_func=tier_based_key
-    )
+    RateLimit(rate=1000, window_seconds=3600, key_func=tier_based_key),
 )
 
 
 @app.get("/api/premium")
 async def premium_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(premium_flow))
+    ctx: RequestContext = Depends(flow_dependency(premium_flow)),
 ):
     """Premium endpoint with tier-based limiting: 1000 req/hour for premium."""
     return {
         "message": "Premium data",
         "user": ctx.user["sub"],
-        "tier": ctx.user["tier"]
+        "tier": ctx.user["tier"],
     }
 
 
 # Strict rate limiting for expensive operations
 strict_flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    RateLimit(rate=5, window_seconds=60)
+    JWTAuthentication(decode=decode_jwt), RateLimit(rate=5, window_seconds=60)
 )
 
 
 @app.post("/api/process")
-async def process_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(strict_flow))
-):
+async def process_endpoint(ctx: RequestContext = Depends(flow_dependency(strict_flow))):
     """Expensive operation: 5 req/min per user."""
-    return {
-        "message": "Processing started",
-        "user": ctx.user["sub"]
-    }
+    return {"message": "Processing started", "user": ctx.user["sub"]}
 
 
 # API key-based rate limiting
@@ -126,24 +112,18 @@ def api_key_limiter(ctx: RequestContext) -> str:
     return "apikey:unknown"
 
 
-api_flow = Flow(
-    RateLimit(
-        rate=50,
-        window_seconds=60,
-        key_func=api_key_limiter
-    )
-)
+api_flow = Flow(RateLimit(rate=50, window_seconds=60, key_func=api_key_limiter))
 
 
 @app.get("/api/external")
 async def external_api_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(api_flow))
+    ctx: RequestContext = Depends(flow_dependency(api_flow)),
 ):
     """External API endpoint: 50 req/min per API key."""
     api_key = ctx.request.headers.get("X-API-Key", "none")
     return {
         "message": "External API",
-        "api_key": api_key[:8] + "..." if len(api_key) > 8 else api_key
+        "api_key": api_key[:8] + "..." if len(api_key) > 8 else api_key,
     }
 
 
@@ -152,6 +132,7 @@ enrich_openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
     # Test commands:

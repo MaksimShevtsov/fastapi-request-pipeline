@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import Depends, FastAPI
+
 from fastapi_request_pipeline import (
     ComponentCategory,
     Flow,
@@ -27,6 +28,7 @@ app = FastAPI(title="Custom Components Examples")
 
 
 # ========== Custom Audit Logging Component ==========
+
 
 class AuditLogger(FlowComponent):
     """Logs all requests for audit purposes."""
@@ -44,7 +46,7 @@ class AuditLogger(FlowComponent):
             "method": ctx.request.method,
             "path": ctx.request.url.path,
             "user": ctx.user.get("sub") if ctx.user else None,
-            "ip": ctx.request.client.host if ctx.request.client else None
+            "ip": ctx.request.client.host if ctx.request.client else None,
         }
         # In production, send to logging service
         print(f"[AUDIT] {log_entry}")
@@ -54,6 +56,7 @@ class AuditLogger(FlowComponent):
 
 
 # ========== Custom Request ID Component ==========
+
 
 class RequestID(FlowComponent):
     """Generates unique request ID."""
@@ -80,14 +83,15 @@ class RequestID(FlowComponent):
                     "in": "header",
                     "required": False,
                     "schema": {"type": "string"},
-                    "description": "Optional request ID for tracking"
+                    "description": "Optional request ID for tracking",
                 }
             ],
-            "x-request-id": True
+            "x-request-id": True,
         }
 
 
 # ========== Custom Tenant Isolation Component ==========
+
 
 class TenantIsolation(FlowComponent):
     """Enforces tenant isolation in multi-tenant applications."""
@@ -105,17 +109,20 @@ class TenantIsolation(FlowComponent):
 
         if not tenant_id:
             from fastapi_request_pipeline import PermissionDenied
+
             raise PermissionDenied("Tenant ID required")
 
         # Validate user has access to tenant
         if ctx.user and ctx.user.get("tenant_id") != tenant_id:
             from fastapi_request_pipeline import PermissionDenied
+
             raise PermissionDenied("Access to this tenant denied")
 
         ctx.state["tenant_id"] = tenant_id
 
 
 # ========== Custom Response Time Component ==========
+
 
 class ResponseTimer(FlowComponent):
     """Tracks response time."""
@@ -128,6 +135,7 @@ class ResponseTimer(FlowComponent):
 
 
 # ========== Custom IP Whitelist Component ==========
+
 
 class IPWhitelist(FlowComponent):
     """Restricts access to whitelisted IPs."""
@@ -151,10 +159,12 @@ class IPWhitelist(FlowComponent):
 
         if client_ip not in self.allowed_ips:
             from fastapi_request_pipeline import PermissionDenied
+
             raise PermissionDenied(f"IP {client_ip} not whitelisted")
 
 
 # ========== Custom Usage Tracking Component ==========
+
 
 class UsageTracker(FlowComponent):
     """Tracks API usage metrics."""
@@ -175,6 +185,7 @@ class UsageTracker(FlowComponent):
 
 # ========== Setup mock auth ==========
 
+
 async def decode_jwt(token: str) -> dict:
     """Mock JWT decoder."""
     if token == "valid-token":
@@ -188,76 +199,57 @@ async def decode_jwt(token: str) -> dict:
 
 # Basic flow with audit logging
 audit_flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    AuditLogger(app_name="example-api")
+    JWTAuthentication(decode=decode_jwt), AuditLogger(app_name="example-api")
 )
 
 
 @app.get("/audit-example")
-async def audit_example(
-    ctx: RequestContext = Depends(flow_dependency(audit_flow))
-):
+async def audit_example(ctx: RequestContext = Depends(flow_dependency(audit_flow))):
     """Endpoint with audit logging."""
-    return {
-        "message": "Request logged",
-        "audit": ctx.state.get("audit_log")
-    }
+    return {"message": "Request logged", "audit": ctx.state.get("audit_log")}
 
 
 # Flow with request ID
-request_id_flow = Flow(
-    RequestID(),
-    JWTAuthentication(decode=decode_jwt)
-)
+request_id_flow = Flow(RequestID(), JWTAuthentication(decode=decode_jwt))
 
 
 @app.get("/with-request-id")
 async def with_request_id(
-    ctx: RequestContext = Depends(flow_dependency(request_id_flow))
+    ctx: RequestContext = Depends(flow_dependency(request_id_flow)),
 ):
     """Endpoint with request ID tracking."""
-    return {
-        "message": "Success",
-        "request_id": ctx.state["request_id"]
-    }
+    return {"message": "Success", "request_id": ctx.state["request_id"]}
 
 
 # Multi-tenant flow
 tenant_flow = Flow(
     JWTAuthentication(decode=decode_jwt),
     TenantIsolation(),
-    AuditLogger(app_name="multi-tenant-api")
+    AuditLogger(app_name="multi-tenant-api"),
 )
 
 
 @app.get("/tenant-data")
-async def tenant_data(
-    ctx: RequestContext = Depends(flow_dependency(tenant_flow))
-):
+async def tenant_data(ctx: RequestContext = Depends(flow_dependency(tenant_flow))):
     """Tenant-isolated endpoint."""
     return {
         "message": "Tenant data",
         "tenant_id": ctx.state["tenant_id"],
-        "user": ctx.user["sub"]
+        "user": ctx.user["sub"],
     }
 
 
 # IP whitelist flow
 whitelist_flow = Flow(
     IPWhitelist(allowed_ips={"127.0.0.1", "::1", "192.168.1.100"}),
-    JWTAuthentication(decode=decode_jwt)
+    JWTAuthentication(decode=decode_jwt),
 )
 
 
 @app.get("/admin-only")
-async def admin_only(
-    ctx: RequestContext = Depends(flow_dependency(whitelist_flow))
-):
+async def admin_only(ctx: RequestContext = Depends(flow_dependency(whitelist_flow))):
     """IP-restricted endpoint."""
-    return {
-        "message": "Admin access",
-        "user": ctx.user["sub"]
-    }
+    return {"message": "Admin access", "user": ctx.user["sub"]}
 
 
 # Combined flow with multiple custom components
@@ -267,14 +259,12 @@ full_flow = Flow(
     TenantIsolation(),
     ResponseTimer(),
     UsageTracker(),
-    AuditLogger(app_name="full-example")
+    AuditLogger(app_name="full-example"),
 )
 
 
 @app.get("/full-example")
-async def full_example(
-    ctx: RequestContext = Depends(flow_dependency(full_flow))
-):
+async def full_example(ctx: RequestContext = Depends(flow_dependency(full_flow))):
     """Endpoint with all custom components."""
     elapsed = time.perf_counter() - ctx.state["start_time"]
 
@@ -284,7 +274,7 @@ async def full_example(
         "tenant_id": ctx.state["tenant_id"],
         "user": ctx.user["sub"],
         "response_time_ms": f"{elapsed * 1000:.2f}",
-        "usage_tracked": ctx.state.get("usage_tracked")
+        "usage_tracked": ctx.state.get("usage_tracked"),
     }
 
 
@@ -293,6 +283,7 @@ enrich_openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
     # Test commands:

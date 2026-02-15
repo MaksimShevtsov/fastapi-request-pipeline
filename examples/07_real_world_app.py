@@ -9,9 +9,9 @@ Demonstrates:
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI
+
 from fastapi_request_pipeline import (
     AllowAnonymous,
     ComponentCategory,
@@ -36,6 +36,7 @@ from fastapi_request_pipeline import (
 @dataclass
 class User:
     """User model."""
+
     id: int
     username: str
     email: str
@@ -46,6 +47,7 @@ class User:
 @dataclass
 class Post:
     """Blog post model."""
+
     id: int
     title: str
     content: str
@@ -62,22 +64,22 @@ USERS_DB = {
         username="admin",
         email="admin@example.com",
         role="admin",
-        permissions=["posts:read", "posts:write", "posts:delete", "users:manage"]
+        permissions=["posts:read", "posts:write", "posts:delete", "users:manage"],
     ),
     "author": User(
         id=2,
         username="author",
         email="author@example.com",
         role="author",
-        permissions=["posts:read", "posts:write"]
+        permissions=["posts:read", "posts:write"],
     ),
     "reader": User(
         id=3,
         username="reader",
         email="reader@example.com",
         role="reader",
-        permissions=["posts:read"]
-    )
+        permissions=["posts:read"],
+    ),
 }
 
 POSTS_DB = [
@@ -89,6 +91,7 @@ POSTS_DB = [
 
 # ========== Authentication ==========
 
+
 async def decode_jwt(token: str) -> User:
     """Decode JWT and return user."""
     # Mock: token is username
@@ -99,6 +102,7 @@ async def decode_jwt(token: str) -> User:
 
 
 # ========== Custom Components ==========
+
 
 class OwnershipCheck(FlowComponent):
     """Check if user owns the resource."""
@@ -131,14 +135,15 @@ class CacheControl(FlowComponent):
 
 app = FastAPI(
     title="Blog API",
-    description="A complete blog API with authentication, permissions, and rate limiting",
-    version="1.0.0"
+    description=(
+        "A complete blog API with authentication, permissions, and rate limiting"
+    ),
+    version="1.0.0",
 )
 
 # Application-level flow: all endpoints require auth and basic rate limit
 app_flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    RateLimit(rate=100, window_seconds=60)
+    JWTAuthentication(decode=decode_jwt), RateLimit(rate=100, window_seconds=60)
 )
 
 
@@ -149,22 +154,24 @@ public_router = APIRouter(prefix="/public", tags=["Public"])
 public_flow = Flow(
     OverrideFlow(AllowAnonymous()),
     CacheControl(max_age=300),
-    RateLimit(rate=50, window_seconds=60)  # Stricter limit for public
+    RateLimit(rate=50, window_seconds=60),  # Stricter limit for public
 )
 
 
 @public_router.get("/posts")
 async def list_public_posts(
     ctx: RequestContext = Depends(
-        flow_dependency(merge_flows(
-            app_flow,
-            public_flow,
-            Flow(
-                QueryFilter(allowed_fields={"status"}),
-                LimitOffset(default_limit=10, max_limit=50)
+        flow_dependency(
+            merge_flows(
+                app_flow,
+                public_flow,
+                Flow(
+                    QueryFilter(allowed_fields={"status"}),
+                    LimitOffset(default_limit=10, max_limit=50),
+                ),
             )
-        ))
-    )
+        )
+    ),
 ):
     """List published posts (public access)."""
     # Apply filters
@@ -173,7 +180,7 @@ async def list_public_posts(
     # Apply pagination
     offset = ctx.state.get("offset", 0)
     limit = ctx.state.get("limit", 10)
-    paginated = posts[offset:offset + limit]
+    paginated = posts[offset : offset + limit]
 
     return {
         "posts": [
@@ -181,26 +188,29 @@ async def list_public_posts(
                 "id": p.id,
                 "title": p.title,
                 "author_id": p.author_id,
-                "created_at": p.created_at
+                "created_at": p.created_at,
             }
             for p in paginated
         ],
         "total": len(posts),
         "offset": offset,
         "limit": limit,
-        "cache_control": ctx.state.get("cache_control")
+        "cache_control": ctx.state.get("cache_control"),
     }
 
 
 @public_router.get("/posts/{post_id}")
 async def get_public_post(
     post_id: int,
-    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, public_flow)))
+    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, public_flow))),
 ):
     """Get published post by ID."""
-    post = next((p for p in POSTS_DB if p.id == post_id and p.status == "published"), None)
+    post = next(
+        (p for p in POSTS_DB if p.id == post_id and p.status == "published"), None
+    )
     if not post:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Post not found")
 
     return {
@@ -208,7 +218,7 @@ async def get_public_post(
         "title": post.title,
         "content": post.content,
         "author_id": post.author_id,
-        "created_at": post.created_at
+        "created_at": post.created_at,
     }
 
 
@@ -224,18 +234,19 @@ posts_router = APIRouter(prefix="/posts", tags=["Posts"])
 @posts_router.get("/")
 async def list_posts(
     ctx: RequestContext = Depends(
-        flow_dependency(merge_flows(
-            app_flow,
-            Flow(
-                HasPermission("posts:read"),
-                QueryFilter(allowed_fields={"status", "author_id"}),
-                LimitOffset(default_limit=20, max_limit=100)
+        flow_dependency(
+            merge_flows(
+                app_flow,
+                Flow(
+                    HasPermission("posts:read"),
+                    QueryFilter(allowed_fields={"status", "author_id"}),
+                    LimitOffset(default_limit=20, max_limit=100),
+                ),
             )
-        ))
-    )
+        )
+    ),
 ):
     """List all posts (authenticated users see drafts too)."""
-    user: User = ctx.user
     posts = POSTS_DB
 
     # Apply filters
@@ -249,7 +260,7 @@ async def list_posts(
     # Apply pagination
     offset = ctx.state.get("offset", 0)
     limit = ctx.state.get("limit", 20)
-    paginated = posts[offset:offset + limit]
+    paginated = posts[offset : offset + limit]
 
     return {
         "posts": [
@@ -259,13 +270,13 @@ async def list_posts(
                 "content": p.content[:100] + "...",
                 "author_id": p.author_id,
                 "status": p.status,
-                "created_at": p.created_at
+                "created_at": p.created_at,
             }
             for p in paginated
         ],
         "total": len(posts),
         "offset": offset,
-        "limit": limit
+        "limit": limit,
     }
 
 
@@ -274,14 +285,16 @@ async def create_post(
     title: str,
     content: str,
     ctx: RequestContext = Depends(
-        flow_dependency(merge_flows(
-            app_flow,
-            Flow(
-                HasPermission("posts:write"),
-                RateLimit(rate=10, window_seconds=60)  # Limit post creation
+        flow_dependency(
+            merge_flows(
+                app_flow,
+                Flow(
+                    HasPermission("posts:write"),
+                    RateLimit(rate=10, window_seconds=60),  # Limit post creation
+                ),
             )
-        ))
-    )
+        )
+    ),
 ):
     """Create a new post."""
     user: User = ctx.user
@@ -291,7 +304,7 @@ async def create_post(
         content=content,
         author_id=user.id,
         status="draft",
-        created_at="2024-01-04"
+        created_at="2024-01-04",
     )
     POSTS_DB.append(new_post)
 
@@ -302,11 +315,8 @@ async def create_post(
 async def delete_post(
     post_id: int,
     ctx: RequestContext = Depends(
-        flow_dependency(merge_flows(
-            app_flow,
-            Flow(HasPermission("posts:delete"))
-        ))
-    )
+        flow_dependency(merge_flows(app_flow, Flow(HasPermission("posts:delete"))))
+    ),
 ):
     """Delete a post (admin or post owner)."""
     user: User = ctx.user
@@ -314,11 +324,13 @@ async def delete_post(
 
     if not post:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Post not found")
 
     # Check ownership (unless admin)
     if user.role != "admin" and post.author_id != user.id:
         from fastapi_request_pipeline import PermissionDenied
+
         raise PermissionDenied("Can only delete your own posts")
 
     POSTS_DB.remove(post)
@@ -337,17 +349,12 @@ admin_flow = Flow(HasRole("admin"))
 
 @admin_router.get("/users")
 async def list_users(
-    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, admin_flow)))
+    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, admin_flow))),
 ):
     """List all users (admin only)."""
     return {
         "users": [
-            {
-                "id": u.id,
-                "username": u.username,
-                "email": u.email,
-                "role": u.role
-            }
+            {"id": u.id, "username": u.username, "email": u.email, "role": u.role}
             for u in USERS_DB.values()
         ]
     }
@@ -355,14 +362,14 @@ async def list_users(
 
 @admin_router.get("/stats")
 async def get_stats(
-    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, admin_flow)))
+    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, admin_flow))),
 ):
     """Get platform statistics (admin only)."""
     return {
         "total_users": len(USERS_DB),
         "total_posts": len(POSTS_DB),
         "published_posts": len([p for p in POSTS_DB if p.status == "published"]),
-        "draft_posts": len([p for p in POSTS_DB if p.status == "draft"])
+        "draft_posts": len([p for p in POSTS_DB if p.status == "draft"]),
     }
 
 
@@ -376,9 +383,7 @@ user_router = APIRouter(prefix="/me", tags=["Account"])
 
 
 @user_router.get("/")
-async def get_profile(
-    ctx: RequestContext = Depends(flow_dependency(app_flow))
-):
+async def get_profile(ctx: RequestContext = Depends(flow_dependency(app_flow))):
     """Get current user profile."""
     user: User = ctx.user
     return {
@@ -386,18 +391,15 @@ async def get_profile(
         "username": user.username,
         "email": user.email,
         "role": user.role,
-        "permissions": user.permissions
+        "permissions": user.permissions,
     }
 
 
 @user_router.get("/posts")
 async def get_my_posts(
     ctx: RequestContext = Depends(
-        flow_dependency(merge_flows(
-            app_flow,
-            Flow(LimitOffset(default_limit=10))
-        ))
-    )
+        flow_dependency(merge_flows(app_flow, Flow(LimitOffset(default_limit=10))))
+    ),
 ):
     """Get current user's posts."""
     user: User = ctx.user
@@ -405,14 +407,9 @@ async def get_my_posts(
 
     offset = ctx.state.get("offset", 0)
     limit = ctx.state.get("limit", 10)
-    paginated = posts[offset:offset + limit]
+    paginated = posts[offset : offset + limit]
 
-    return {
-        "posts": paginated,
-        "total": len(posts),
-        "offset": offset,
-        "limit": limit
-    }
+    return {"posts": paginated, "total": len(posts), "offset": offset, "limit": limit}
 
 
 app.include_router(user_router)
@@ -424,6 +421,7 @@ enrich_openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
     # Test commands:

@@ -8,6 +8,7 @@ Demonstrates:
 """
 
 from fastapi import Depends, FastAPI
+
 from fastapi_request_pipeline import (
     Flow,
     JWTAuthentication,
@@ -29,9 +30,7 @@ async def decode_jwt(token: str) -> dict:
 
 
 # Create a simple authenticated flow
-auth_flow = Flow(
-    JWTAuthentication(decode=decode_jwt)
-)
+auth_flow = Flow(JWTAuthentication(decode=decode_jwt))
 
 
 @app.get("/")
@@ -41,20 +40,13 @@ async def public_endpoint():
 
 
 @app.get("/protected")
-async def protected_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(auth_flow))
-):
+async def protected_endpoint(ctx: RequestContext = Depends(flow_dependency(auth_flow))):
     """Protected endpoint - requires JWT authentication."""
-    return {
-        "message": f"Hello, {ctx.user['email']}!",
-        "user": ctx.user
-    }
+    return {"message": f"Hello, {ctx.user['email']}!", "user": ctx.user}
 
 
 @app.get("/me")
-async def get_current_user(
-    ctx: RequestContext = Depends(flow_dependency(auth_flow))
-):
+async def get_current_user(ctx: RequestContext = Depends(flow_dependency(auth_flow))):
     """Get current user information."""
     return ctx.user
 
@@ -65,6 +57,7 @@ enrich_openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
     # Test with:

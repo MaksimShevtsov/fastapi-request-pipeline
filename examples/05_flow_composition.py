@@ -9,6 +9,7 @@ Demonstrates:
 """
 
 from fastapi import APIRouter, Depends, FastAPI
+
 from fastapi_request_pipeline import (
     AllowAnonymous,
     ComponentCategory,
@@ -39,8 +40,7 @@ async def decode_jwt(token: str) -> dict:
 # ========== Application-level flow ==========
 # Base security for entire application
 app_flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    RateLimit(rate=1000, window_seconds=3600)
+    JWTAuthentication(decode=decode_jwt), RateLimit(rate=1000, window_seconds=3600)
 )
 
 
@@ -55,13 +55,13 @@ admin_router_flow = Flow(HasRole("admin"))
 async def admin_dashboard(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, admin_router_flow))
-    )
+    ),
 ):
     """Admin dashboard - requires admin role."""
     return {
         "message": "Admin Dashboard",
         "user": ctx.user["sub"],
-        "role": ctx.user["role"]
+        "role": ctx.user["role"],
     }
 
 
@@ -69,7 +69,7 @@ async def admin_dashboard(
 async def admin_users(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, admin_router_flow))
-    )
+    ),
 ):
     """Admin user management."""
     return {"message": "User Management", "admin": ctx.user["sub"]}
@@ -88,7 +88,7 @@ public_router_flow = Flow(OverrideFlow(AllowAnonymous()))
 async def health_check(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, public_router_flow))
-    )
+    ),
 ):
     """Health check - no auth required, but still rate limited."""
     return {"status": "healthy", "authenticated": ctx.user is not None}
@@ -98,7 +98,7 @@ async def health_check(
 async def status(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, public_router_flow))
-    )
+    ),
 ):
     """Status endpoint."""
     return {"status": "operational"}
@@ -109,11 +109,10 @@ app.include_router(public_router)
 
 # ========== Route-level customization ==========
 
+
 # Regular authenticated endpoint with app-level defaults
 @app.get("/profile")
-async def profile(
-    ctx: RequestContext = Depends(flow_dependency(app_flow))
-):
+async def profile(ctx: RequestContext = Depends(flow_dependency(app_flow))):
     """User profile - uses app-level flow (auth + rate limit)."""
     return {"user": ctx.user}
 
@@ -128,13 +127,10 @@ route_strict_limit = Flow(
 async def upload(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, route_strict_limit))
-    )
+    ),
 ):
     """Upload endpoint with stricter rate limit: 10 req/min."""
-    return {
-        "message": "Upload started",
-        "user": ctx.user["sub"]
-    }
+    return {"message": "Upload started", "user": ctx.user["sub"]}
 
 
 # Endpoint without rate limiting
@@ -143,15 +139,10 @@ no_throttle = Flow(DisableFlow(ComponentCategory.THROTTLING))
 
 @app.get("/stream")
 async def stream(
-    ctx: RequestContext = Depends(
-        flow_dependency(merge_flows(app_flow, no_throttle))
-    )
+    ctx: RequestContext = Depends(flow_dependency(merge_flows(app_flow, no_throttle))),
 ):
     """Streaming endpoint - authenticated but not rate limited."""
-    return {
-        "message": "Streaming data",
-        "user": ctx.user["sub"]
-    }
+    return {"message": "Streaming data", "user": ctx.user["sub"]}
 
 
 # ========== Complex composition ==========
@@ -170,7 +161,7 @@ api_router_flow = Flow(
 async def get_data(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, api_router_flow))
-    )
+    ),
 ):
     """API endpoint: auth + 100 req/min."""
     return {"data": "sample", "user": ctx.user["sub"]}
@@ -184,7 +175,7 @@ webhook_flow = Flow(DisableFlow(ComponentCategory.THROTTLING))
 async def webhook(
     ctx: RequestContext = Depends(
         flow_dependency(merge_flows(app_flow, api_router_flow, webhook_flow))
-    )
+    ),
 ):
     """Webhook endpoint: auth but no rate limit."""
     return {"message": "Webhook received", "user": ctx.user["sub"]}
@@ -198,12 +189,15 @@ enrich_openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
     # Test commands:
     # Admin endpoints (requires admin role):
-    #   curl -H "Authorization: Bearer admin-token" http://localhost:8000/admin/dashboard
-    #   curl -H "Authorization: Bearer user-token" http://localhost:8000/admin/dashboard  # 403
+    #   curl -H "Authorization: Bearer admin-token" \
+    #     http://localhost:8000/admin/dashboard
+    #   curl -H "Authorization: Bearer user-token" \
+    #     http://localhost:8000/admin/dashboard  # 403
     #
     # Public endpoints (no auth):
     #   curl http://localhost:8000/public/health

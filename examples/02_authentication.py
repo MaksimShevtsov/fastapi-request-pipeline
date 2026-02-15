@@ -9,6 +9,7 @@ Demonstrates:
 """
 
 from fastapi import Depends, FastAPI
+
 from fastapi_request_pipeline import (
     AllowAnonymous,
     APIKeyAuthentication,
@@ -52,16 +53,13 @@ async def validate_api_key(key: str) -> dict:
     raise ValueError("Invalid API key")
 
 
-api_key_flow = Flow(
-    APIKeyAuthentication(
-        validate=validate_api_key,
-        header="X-API-Key"
-    )
-)
+api_key_flow = Flow(APIKeyAuthentication(validate=validate_api_key, header="X-API-Key"))
 
 
 @app.get("/api-key")
-async def api_key_endpoint(ctx: RequestContext = Depends(flow_dependency(api_key_flow))):
+async def api_key_endpoint(
+    ctx: RequestContext = Depends(flow_dependency(api_key_flow)),
+):
     """Endpoint protected with API Key authentication."""
     return {"message": "API Key authenticated", "user": ctx.user}
 
@@ -76,10 +74,7 @@ async def lookup_session(session_id: str) -> dict:
 
 
 cookie_flow = Flow(
-    CookieAuthentication(
-        lookup=lookup_session,
-        cookie_name="session_id"
-    )
+    CookieAuthentication(lookup=lookup_session, cookie_name="session_id")
 )
 
 
@@ -97,7 +92,7 @@ public_flow = merge_flows(base_flow, public_override)
 
 @app.get("/public")
 async def public_with_override(
-    ctx: RequestContext = Depends(flow_dependency(public_flow))
+    ctx: RequestContext = Depends(flow_dependency(public_flow)),
 ):
     """Public endpoint using flow override."""
     if ctx.user:
@@ -107,17 +102,13 @@ async def public_with_override(
 
 # Custom header and scheme
 custom_jwt_flow = Flow(
-    JWTAuthentication(
-        decode=decode_jwt,
-        header="X-Auth-Token",
-        scheme="Token"
-    )
+    JWTAuthentication(decode=decode_jwt, header="X-Auth-Token", scheme="Token")
 )
 
 
 @app.get("/custom-header")
 async def custom_header_endpoint(
-    ctx: RequestContext = Depends(flow_dependency(custom_jwt_flow))
+    ctx: RequestContext = Depends(flow_dependency(custom_jwt_flow)),
 ):
     """JWT auth with custom header and scheme."""
     return {"message": "Custom auth header", "user": ctx.user}
@@ -128,6 +119,7 @@ enrich_openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
     # Test commands:
