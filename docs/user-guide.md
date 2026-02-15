@@ -200,10 +200,12 @@ flow = Flow(
 ```python
 from fastapi_request_pipeline import HasRole
 
-# User object must have 'roles' collection
+# User object must have a 'roles' attribute containing a list/collection
+# Example user shape: {"sub": "user123", "roles": ["admin", "user"]}
+# Or as object: user.roles = ["admin", "user"]
 flow = Flow(
     JWTAuthentication(decode=decode_jwt),
-    HasRole("admin")
+    HasRole("admin")  # Checks if "admin" in user.roles
 )
 ```
 
@@ -212,10 +214,12 @@ flow = Flow(
 ```python
 from fastapi_request_pipeline import HasPermission
 
-# User object must have 'permissions' iterable
+# User object must have a 'permissions' attribute containing a list/collection
+# Example user shape: {"sub": "user123", "permissions": ["read", "write"]}
+# Or as object: user.permissions = ["read", "write"]
 flow = Flow(
     JWTAuthentication(decode=decode_jwt),
-    HasPermission("posts:write")
+    HasPermission("posts:write")  # Checks if "posts:write" in user.permissions
 )
 ```
 
