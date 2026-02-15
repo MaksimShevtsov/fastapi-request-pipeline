@@ -232,11 +232,18 @@ class HasRole(FlowComponent):
 
 Checks if user has required role.
 
+Expects the user object (from `ctx.user`) to have a `roles` attribute or dict key containing a list/collection of role names.
+
 **Parameters:**
 - `role`: Role name to check
 
 **Raises:**
 - `PermissionDenied` (403) if user missing or role not in user `roles`
+
+**Example user object:**
+```python
+{"sub": "user123", "roles": ["admin", "user"]}
+```
 
 ---
 
@@ -249,11 +256,18 @@ class HasPermission(FlowComponent):
 
 Checks if user has required permission.
 
+Expects the user object (from `ctx.user`) to have a `permissions` attribute or dict key containing a list/collection of permission names.
+
 **Parameters:**
 - `permission`: Permission name to check
 
 **Raises:**
 - `PermissionDenied` (403) if user missing or permission not in collection
+
+**Example user object:**
+```python
+{"sub": "user123", "permissions": ["read", "write", "delete"]}
+```
 
 ---
 
