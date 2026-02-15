@@ -215,8 +215,8 @@ flow = Flow(
 from fastapi_request_pipeline import HasPermission
 
 # User object must have a 'permissions' attribute containing a list/collection
-# Example user shape: {"sub": "user123", "permissions": ["read", "write"]}
-# Or as object: user.permissions = ["read", "write"]
+# Example user shape: {"sub": "user123", "permissions": ["read", "posts:write"]}
+# Or as object: user.permissions = ["read", "posts:write"]
 flow = Flow(
     JWTAuthentication(decode=decode_jwt),
     HasPermission("posts:write")  # Checks if "posts:write" in user.permissions
