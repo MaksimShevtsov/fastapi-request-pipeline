@@ -155,7 +155,8 @@ Compose flows at different levels:
 from fastapi import APIRouter
 from fastapi_request_pipeline import merge_flows
 
-# Update decoder to support roles for admin checks
+# Update decoder to support admin and user roles
+# (Using different tokens to demonstrate role-based access)
 async def decode_jwt(token: str) -> dict:
     if token == "admin-token":
         return {"sub": "admin", "roles": ["admin"]}
