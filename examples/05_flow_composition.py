@@ -31,9 +31,9 @@ app = FastAPI(title="Flow Composition Examples")
 async def decode_jwt(token: str) -> dict:
     """Mock JWT decoder."""
     if token == "admin-token":
-        return {"sub": "admin", "role": "admin"}
+        return {"sub": "admin", "roles": ["admin"]}
     if token == "user-token":
-        return {"sub": "user", "role": "user"}
+        return {"sub": "user", "roles": ["user"]}
     raise ValueError("Invalid token")
 
 
@@ -61,7 +61,7 @@ async def admin_dashboard(
     return {
         "message": "Admin Dashboard",
         "user": ctx.user["sub"],
-        "role": ctx.user["role"],
+        "roles": ctx.user["roles"],
     }
 
 

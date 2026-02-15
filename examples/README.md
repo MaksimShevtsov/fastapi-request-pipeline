@@ -12,9 +12,6 @@ uv sync --extra dev
 
 # Run an example
 uv run python examples/01_basic_usage.py
-
-# Or use uvicorn directly
-uvicorn examples.01_basic_usage:app --reload
 ```
 
 ## Example Files

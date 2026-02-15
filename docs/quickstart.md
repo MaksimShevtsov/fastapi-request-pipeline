@@ -99,12 +99,16 @@ Add role-based or permission-based access control:
 ```python
 from fastapi_request_pipeline import HasRole, HasPermission
 
-# Update decoder to include role
+# Update decoder to include roles
 async def decode_jwt(token: str) -> dict:
     if token == "admin-token":
-        return {"sub": "admin", "role": "admin", "permissions": ["read", "write", "delete"]}
+        return {
+            "sub": "admin",
+            "roles": ["admin"],
+            "permissions": ["read", "write", "delete"],
+        }
     if token == "user-token":
-        return {"sub": "user", "role": "user", "permissions": ["read", "write"]}
+        return {"sub": "user", "roles": ["user"], "permissions": ["read", "write"]}
     raise ValueError("Invalid token")
 
 # Admin-only endpoint
@@ -216,7 +220,7 @@ from fastapi_request_pipeline import LimitOffset, QueryFilter
 
 list_flow = Flow(
     JWTAuthentication(decode=decode_jwt),
-    QueryFilter(allowed_fields={"status", "priority"}),
+    QueryFilter("status", "priority"),
     LimitOffset(default_limit=20, max_limit=100)
 )
 
@@ -225,9 +229,10 @@ async def list_tasks(
     ctx: RequestContext = Depends(flow_dependency(list_flow))
 ):
     # ctx.state contains parsed pagination and filters
-    limit = ctx.state["limit"]
-    offset = ctx.state["offset"]
-    filters = ctx.state.get("filters", [])
+    pagination = ctx.state["pagination"]
+    limit = pagination["limit"]
+    offset = pagination["offset"]
+    filters = ctx.state.get("filters", {})
 
     # Use these to query your database
     # tasks = db.query(Task).filter(...).limit(limit).offset(offset)
@@ -249,7 +254,7 @@ curl -H "Authorization: Bearer valid-token" \
 
 # With filters
 curl -H "Authorization: Bearer valid-token" \
-  "http://localhost:8000/tasks?status=eq:open&priority=in:high,urgent"
+    "http://localhost:8000/tasks?status=open&priority=high"
 ```
 
 ## Debug Mode

@@ -9,7 +9,7 @@ Demonstrates:
 """
 
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Depends, FastAPI
@@ -41,7 +41,7 @@ class AuditLogger(FlowComponent):
     async def resolve(self, ctx: RequestContext) -> None:
         """Log request details."""
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "app": self.app_name,
             "method": ctx.request.method,
             "path": ctx.request.url.path,

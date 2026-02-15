@@ -29,11 +29,19 @@ app = FastAPI(title="Permission Examples")
 USERS = {
     "admin-token": {
         "sub": "admin",
-        "role": "admin",
+        "roles": ["admin"],
         "permissions": ["read", "write", "delete"],
     },
-    "user-token": {"sub": "user", "role": "user", "permissions": ["read", "write"]},
-    "readonly-token": {"sub": "readonly", "role": "viewer", "permissions": ["read"]},
+    "user-token": {
+        "sub": "user",
+        "roles": ["user"],
+        "permissions": ["read", "write"],
+    },
+    "readonly-token": {
+        "sub": "readonly",
+        "roles": ["viewer"],
+        "permissions": ["read"],
+    },
 }
 
 
@@ -56,7 +64,7 @@ async def authenticated_endpoint(
     return {
         "message": "You are authenticated",
         "user": ctx.user["sub"],
-        "role": ctx.user["role"],
+        "roles": ctx.user["roles"],
     }
 
 
@@ -72,7 +80,7 @@ async def admin_endpoint(ctx: RequestContext = Depends(flow_dependency(admin_flo
 
 user_or_admin_flow = Flow(
     JWTAuthentication(decode=decode_jwt),
-    HasRole("user"),  # Note: in production, you'd want OR logic for multiple roles
+    HasRole("user"),
 )
 
 
@@ -80,11 +88,11 @@ user_or_admin_flow = Flow(
 async def users_endpoint(
     ctx: RequestContext = Depends(flow_dependency(user_or_admin_flow)),
 ):
-    """User or admin access."""
+    """User role access."""
     return {
         "message": "User access granted",
         "user": ctx.user["sub"],
-        "role": ctx.user["role"],
+        "roles": ctx.user["roles"],
     }
 
 

@@ -40,7 +40,7 @@ class User:
     id: int
     username: str
     email: str
-    role: str
+    roles: list[str]
     permissions: list[str]
 
 
@@ -63,21 +63,21 @@ USERS_DB = {
         id=1,
         username="admin",
         email="admin@example.com",
-        role="admin",
+        roles=["admin"],
         permissions=["posts:read", "posts:write", "posts:delete", "users:manage"],
     ),
     "author": User(
         id=2,
         username="author",
         email="author@example.com",
-        role="author",
+        roles=["author"],
         permissions=["posts:read", "posts:write"],
     ),
     "reader": User(
         id=3,
         username="reader",
         email="reader@example.com",
-        role="reader",
+        roles=["reader"],
         permissions=["posts:read"],
     ),
 }
@@ -166,7 +166,7 @@ async def list_public_posts(
                 app_flow,
                 public_flow,
                 Flow(
-                    QueryFilter(allowed_fields={"status"}),
+                    QueryFilter("status"),
                     LimitOffset(default_limit=10, max_limit=50),
                 ),
             )
@@ -176,10 +176,14 @@ async def list_public_posts(
     """List published posts (public access)."""
     # Apply filters
     posts = [p for p in POSTS_DB if p.status == "published"]
+    filters = ctx.state.get("filters", {})
+    if filters.get("status"):
+        posts = [p for p in posts if p.status == filters["status"]]
 
     # Apply pagination
-    offset = ctx.state.get("offset", 0)
-    limit = ctx.state.get("limit", 10)
+    pagination = ctx.state.get("pagination", {"offset": 0, "limit": 10})
+    offset = pagination["offset"]
+    limit = pagination["limit"]
     paginated = posts[offset : offset + limit]
 
     return {
@@ -239,7 +243,7 @@ async def list_posts(
                 app_flow,
                 Flow(
                     HasPermission("posts:read"),
-                    QueryFilter(allowed_fields={"status", "author_id"}),
+                    QueryFilter("status", "author_id"),
                     LimitOffset(default_limit=20, max_limit=100),
                 ),
             )
@@ -250,16 +254,16 @@ async def list_posts(
     posts = POSTS_DB
 
     # Apply filters
-    filters = ctx.state.get("filters", [])
-    for f in filters:
-        if f["field"] == "status":
-            posts = [p for p in posts if p.status == f["value"]]
-        elif f["field"] == "author_id":
-            posts = [p for p in posts if p.author_id == int(f["value"])]
+    filters = ctx.state.get("filters", {})
+    if filters.get("status"):
+        posts = [p for p in posts if p.status == filters["status"]]
+    if filters.get("author_id"):
+        posts = [p for p in posts if p.author_id == int(filters["author_id"])]
 
     # Apply pagination
-    offset = ctx.state.get("offset", 0)
-    limit = ctx.state.get("limit", 20)
+    pagination = ctx.state.get("pagination", {"offset": 0, "limit": 20})
+    offset = pagination["offset"]
+    limit = pagination["limit"]
     paginated = posts[offset : offset + limit]
 
     return {
@@ -328,7 +332,7 @@ async def delete_post(
         raise HTTPException(status_code=404, detail="Post not found")
 
     # Check ownership (unless admin)
-    if user.role != "admin" and post.author_id != user.id:
+    if "admin" not in user.roles and post.author_id != user.id:
         from fastapi_request_pipeline import PermissionDenied
 
         raise PermissionDenied("Can only delete your own posts")
@@ -354,7 +358,12 @@ async def list_users(
     """List all users (admin only)."""
     return {
         "users": [
-            {"id": u.id, "username": u.username, "email": u.email, "role": u.role}
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "roles": u.roles,
+            }
             for u in USERS_DB.values()
         ]
     }
@@ -390,7 +399,7 @@ async def get_profile(ctx: RequestContext = Depends(flow_dependency(app_flow))):
         "id": user.id,
         "username": user.username,
         "email": user.email,
-        "role": user.role,
+        "roles": user.roles,
         "permissions": user.permissions,
     }
 
@@ -405,8 +414,9 @@ async def get_my_posts(
     user: User = ctx.user
     posts = [p for p in POSTS_DB if p.author_id == user.id]
 
-    offset = ctx.state.get("offset", 0)
-    limit = ctx.state.get("limit", 10)
+    pagination = ctx.state.get("pagination", {"offset": 0, "limit": 10})
+    offset = pagination["offset"]
+    limit = pagination["limit"]
     paginated = posts[offset : offset + limit]
 
     return {"posts": paginated, "total": len(posts), "offset": offset, "limit": limit}

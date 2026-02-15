@@ -200,19 +200,10 @@ flow = Flow(
 ```python
 from fastapi_request_pipeline import HasRole
 
-# User object must have 'role' attribute
+# User object must have 'roles' collection
 flow = Flow(
     JWTAuthentication(decode=decode_jwt),
     HasRole("admin")
-)
-```
-
-Custom attribute:
-
-```python
-flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    HasRole("premium", attr="subscription_tier")
 )
 ```
 
@@ -225,15 +216,6 @@ from fastapi_request_pipeline import HasPermission
 flow = Flow(
     JWTAuthentication(decode=decode_jwt),
     HasPermission("posts:write")
-)
-```
-
-Custom attribute:
-
-```python
-flow = Flow(
-    JWTAuthentication(decode=decode_jwt),
-    HasPermission("delete_users", attr="scopes")
 )
 ```
 
@@ -302,15 +284,12 @@ flow = Flow(
 ```python
 from fastapi_request_pipeline import FeatureEnabled
 
-async def is_feature_enabled(name: str, ctx: RequestContext) -> bool:
+async def is_feature_enabled(feature: str) -> bool:
     # Check your feature flag service
-    return await feature_flags.is_enabled(name, ctx.user)
+    return await feature_flags.is_enabled(feature)
 
 flow = Flow(
-    FeatureEnabled(
-        name="new_api",
-        is_enabled=is_feature_enabled
-    )
+    FeatureEnabled("new_api", checker=is_feature_enabled)
 )
 ```
 
@@ -322,17 +301,11 @@ flow = Flow(
 from fastapi_request_pipeline import QueryFilter
 
 flow = Flow(
-    QueryFilter(
-        allowed_fields={"status", "priority", "assignee"},
-        operators={"eq", "in", "gte", "lte"}
-    )
+    QueryFilter("status", "priority", "assignee")
 )
 
-# GET /tasks?status=eq:open&priority=in:high,urgent
-# ctx.state["filters"] = [
-#     {"field": "status", "operator": "eq", "value": "open"},
-#     {"field": "priority", "operator": "in", "value": ["high", "urgent"]}
-# ]
+# GET /tasks?status=open&priority=high
+# ctx.state["filters"] = {"status": "open", "priority": "high"}
 ```
 
 ### Pagination
@@ -345,8 +318,7 @@ flow = Flow(
 )
 
 # GET /items?limit=50&offset=100
-# ctx.state["limit"] = 50
-# ctx.state["offset"] = 100
+# ctx.state["pagination"] = {"limit": 50, "offset": 100}
 ```
 
 ## Flow Composition

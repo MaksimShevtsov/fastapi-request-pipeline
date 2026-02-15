@@ -18,7 +18,7 @@ A composable, type-safe request processing pipeline for FastAPI. Build clean, ma
 - **OpenAPI Integration** - Automatic OpenAPI schema enrichment with security requirements
 - **Debug Mode** - Detailed execution traces for development
 - **Extensible** - Easy to create custom components
-- **Production Ready** - 100% test coverage, used in production
+- **Production Ready** - Comprehensive test suite and production usage
 
 ## Quick Start
 
@@ -43,7 +43,7 @@ app = FastAPI()
 # Define your flow
 async def decode_jwt(token: str) -> dict:
     # Your JWT decoding logic
-    return {"sub": "user123", "role": "admin"}
+    return {"sub": "user123", "roles": ["admin"]}
 
 admin_flow = Flow(
     JWTAuthentication(decode=decode_jwt),
@@ -97,7 +97,7 @@ Built-in components:
 - Custom backends (e.g., Redis) via `ThrottleBackend` protocol
 
 **Filters & Pagination**
-- `QueryFilter` - Parse and validate query filters
+- `QueryFilter` - Extract selected query params into context state
 - `LimitOffset` - Offset-based pagination
 
 ### Flow Composition
@@ -218,7 +218,8 @@ posts_flow = Flow(
 
 @app.get("/posts")
 async def get_posts(ctx: RequestContext = Depends(flow_dependency(posts_flow))):
-    return get_posts_from_db(ctx.state["limit"], ctx.state["offset"])
+    pagination = ctx.state["pagination"]
+    return get_posts_from_db(pagination["limit"], pagination["offset"])
 ```
 
 **Benefits:**

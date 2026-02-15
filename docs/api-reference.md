@@ -227,17 +227,16 @@ Requires `ctx.user` to be non-None.
 
 ```python
 class HasRole(FlowComponent):
-    def __init__(self, required_role: str, *, attr: str = "role") -> None
+    def __init__(self, role: str) -> None
 ```
 
 Checks if user has required role.
 
 **Parameters:**
-- `required_role`: Role name to check
-- `attr`: Attribute name on user object (default: "role")
+- `role`: Role name to check
 
 **Raises:**
-- `PermissionDenied` (403) if user missing or role doesn't match
+- `PermissionDenied` (403) if user missing or role not in user `roles`
 
 ---
 
@@ -245,14 +244,13 @@ Checks if user has required role.
 
 ```python
 class HasPermission(FlowComponent):
-    def __init__(self, required_permission: str, *, attr: str = "permissions") -> None
+    def __init__(self, permission: str) -> None
 ```
 
 Checks if user has required permission.
 
 **Parameters:**
-- `required_permission`: Permission name to check
-- `attr`: Attribute name on user object (default: "permissions", must be iterable)
+- `permission`: Permission name to check
 
 **Raises:**
 - `PermissionDenied` (403) if user missing or permission not in collection
@@ -353,16 +351,16 @@ Default in-memory throttle backend. Single-process only, not suitable for produc
 class FeatureEnabled(FlowComponent):
     def __init__(
         self,
-        name: str,
-        is_enabled: Callable[[str, RequestContext], Awaitable[bool]],
+        feature: str,
+        checker: Callable[[str], Awaitable[bool]] | None = None,
     ) -> None
 ```
 
 Checks if feature is enabled for current request.
 
 **Parameters:**
-- `name`: Feature flag name
-- `is_enabled`: Async function that checks if feature is enabled
+- `feature`: Feature flag name
+- `checker`: Optional async callback to check feature by name; when omitted, reads `ctx.state["features"]`
 
 **Raises:**
 - `FeatureDisabled` (403) if feature is disabled
@@ -377,28 +375,27 @@ Checks if feature is enabled for current request.
 class QueryFilter(FlowComponent):
     def __init__(
         self,
-        allowed_fields: set[str],
+        *fields: str,
         *,
-        operators: set[str] | None = None,
+        state_key: str = "filters",
     ) -> None
 ```
 
-Parses query string filters and stores them in `ctx.state["filters"]`.
+Extracts selected query string parameters into `ctx.state[state_key]`.
 
 **Parameters:**
-- `allowed_fields`: Set of allowed field names
-- `operators`: Set of allowed operators (default: {"eq", "ne", "gt", "gte", "lt", "lte", "in"})
+- `*fields`: Query parameter names to extract
+- `state_key`: Context state key for extracted filters (default: `"filters"`)
 
 **Query format:**
-- `?field=operator:value`
-- `?status=eq:open&priority=in:high,urgent`
+- `?status=open&priority=high`
 
 **Result in ctx.state:**
 ```python
-ctx.state["filters"] = [
-    {"field": "status", "operator": "eq", "value": "open"},
-    {"field": "priority", "operator": "in", "value": ["high", "urgent"]}
-]
+ctx.state["filters"] = {
+    "status": "open",
+    "priority": "high",
+}
 ```
 
 ---
@@ -412,24 +409,25 @@ class LimitOffset(FlowComponent):
     def __init__(
         self,
         *,
-        default_limit: int = 20,
         max_limit: int = 100,
+        default_limit: int = 20,
+        state_key: str = "pagination",
     ) -> None
 ```
 
 Parses limit/offset pagination parameters.
 
 **Parameters:**
-- `default_limit`: Default limit if not specified (default: 20)
 - `max_limit`: Maximum allowed limit (default: 100)
+- `default_limit`: Default limit if not specified (default: 20)
+- `state_key`: Context state key for parsed values (default: `"pagination"`)
 
 **Query format:**
 - `?limit=50&offset=100`
 
 **Result in ctx.state:**
 ```python
-ctx.state["limit"] = 50
-ctx.state["offset"] = 100
+ctx.state["pagination"] = {"limit": 50, "offset": 100}
 ```
 
 ---
@@ -626,7 +624,7 @@ Base exception for all flow-related errors.
 
 ```python
 class FlowAbort(FlowException):
-    def __init__(self, status_code: int, detail: str) -> None
+    def __init__(self, detail: str, *, status_code: int = 400) -> None
 ```
 
 Base class for exceptions that abort flow and return HTTP error.
@@ -663,7 +661,7 @@ Permission denied (HTTP 403).
 
 ```python
 class FeatureDisabled(FlowAbort):
-    def __init__(self, feature_name: str) -> None
+    def __init__(self, detail: str = "Feature disabled") -> None
 ```
 
 Feature is disabled (HTTP 403).
@@ -674,7 +672,12 @@ Feature is disabled (HTTP 403).
 
 ```python
 class Throttled(FlowAbort):
-    def __init__(self, retry_after: int) -> None
+    def __init__(
+        self,
+        detail: str = "Rate limit exceeded",
+        *,
+        retry_after: int | None = None,
+    ) -> None
 ```
 
 Rate limit exceeded (HTTP 429).
