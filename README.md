@@ -11,13 +11,13 @@ A composable, type-safe request processing pipeline for FastAPI. Build clean, ma
 
 ## Features
 
-- **Composable Architecture** - Build complex request flows from simple, reusable components
+- **Composable Architecture** - Build complex request flows from simple, reusable FlowComponent instances
 - **Type-Safe** - Full type hints with strict mypy checking
 - **Built-in Components** - Authentication (JWT, API Key, Cookie), permissions, rate limiting, pagination, filters
 - **Flow Composition** - Layer and merge flows at app, router, and route levels
 - **OpenAPI Integration** - Automatic OpenAPI schema enrichment with security requirements
 - **Debug Mode** - Detailed execution traces for development
-- **Extensible** - Easy to create custom components
+- **Extensible** - Easy to create custom FlowComponent subclasses
 - **Production Ready** - Comprehensive test suite and production usage
 
 ## Quick Start
@@ -66,7 +66,7 @@ enrich_openapi(app)
 
 ### Flow
 
-A `Flow` is an ordered container of components that process requests sequentially. Components are automatically sorted by category to ensure proper execution order (authentication → permissions → throttling → filters → pagination → custom).
+A `Flow` is an ordered container of FlowComponent instances that process requests sequentially. FlowComponent instances are automatically sorted by ComponentCategory to ensure proper execution order (authentication → permissions → feature flags → throttling → filters → pagination → custom).
 
 ```python
 flow = Flow(
@@ -76,9 +76,9 @@ flow = Flow(
 )
 ```
 
-### Components
+### Built-in FlowComponent Classes
 
-Built-in components:
+Built-in FlowComponent classes:
 
 **Authentication**
 - `JWTAuthentication` - Bearer token authentication
@@ -97,7 +97,7 @@ Built-in components:
 - Custom backends (e.g., Redis) via `ThrottleBackend` protocol
 
 **Filters & Pagination**
-- `QueryFilter` - Extract selected query params into context state
+- `QueryFilter` - Extract selected query parameters into RequestContext.state
 - `LimitOffset` - Offset-based pagination
 
 ### Flow Composition
@@ -123,9 +123,9 @@ public_flow = Flow(OverrideFlow(AllowAnonymous()))
 final_flow = merge_flows(app_flow, admin_flow, public_flow)
 ```
 
-### Custom Components
+### Custom FlowComponent Subclasses
 
-Create custom components by subclassing `FlowComponent`:
+Create custom FlowComponent subclasses by extending the base class:
 
 ```python
 from fastapi_request_pipeline import FlowComponent, ComponentCategory
@@ -147,7 +147,7 @@ class AuditLog(FlowComponent):
   - [Permissions](examples/03_permissions.py)
   - [Rate Limiting](examples/04_rate_limiting.py)
   - [Flow Composition](examples/05_flow_composition.py)
-  - [Custom Components](examples/06_custom_components.py)
+  - [Custom FlowComponent Subclasses](examples/06_custom_components.py)
   - [Real-World App](examples/07_real_world_app.py)
 
 ## Requirements
@@ -226,10 +226,10 @@ async def get_posts(ctx: RequestContext = Depends(flow_dependency(posts_flow))):
 
 - **Separation of concerns** - Security logic separated from business logic
 - **Reusability** - Define flows once, use across multiple endpoints
-- **Composability** - Mix and match components, override at any level
+- **Composability** - Mix and match FlowComponent instances, override at any level
 - **Maintainability** - Changes to auth/permissions in one place
 - **Type safety** - Full type hints and IDE support
-- **Testability** - Components are easy to unit test
+- **Testability** - FlowComponent instances are easy to unit test
 - **Documentation** - OpenAPI schema automatically reflects security requirements
 
 ## License

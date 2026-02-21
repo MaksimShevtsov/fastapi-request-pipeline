@@ -19,13 +19,13 @@ flow = Flow(
 )
 ```
 
-### Components
+### FlowComponent
 
-Components are processing units that implement specific functionality. Each component:
+FlowComponent instances are processing units that implement specific functionality. Each FlowComponent:
 
-- Belongs to a category (authentication, permission, throttling, etc.)
+- Belongs to a ComponentCategory (AUTHENTICATION, PERMISSION, THROTTLING, etc.)
 - Implements `async def resolve(ctx: RequestContext) -> None`
-- Can modify the `RequestContext` or raise exceptions to abort the flow
+- Can modify the RequestContext or raise exceptions to abort the Flow
 
 Built-in component categories (execution order):
 
@@ -39,7 +39,7 @@ Built-in component categories (execution order):
 
 ### RequestContext
 
-The `RequestContext` is a lightweight container passed through the pipeline:
+The `RequestContext` is a lightweight container passed through the Flow:
 
 ```python
 @dataclass
@@ -49,7 +49,7 @@ class RequestContext:
     state: dict[str, Any]     # Arbitrary key-value storage
 ```
 
-Components can read from and write to the context, enabling data flow between stages.
+FlowComponent instances can read from and write to the RequestContext, enabling data sharing between FlowComponent instances in the Flow.
 
 ## Basic Usage
 
@@ -191,7 +191,7 @@ from fastapi_request_pipeline import Authenticated
 
 flow = Flow(
     JWTAuthentication(decode=decode_jwt),
-    Authenticated()  # Fails if ctx.user is None
+    Authenticated()  # Raises PermissionDenied if RequestContext.user is None
 )
 ```
 
@@ -352,7 +352,7 @@ specific_flow = Flow(
 final_flow = merge_flows(app_flow, admin_router_flow, specific_flow)
 ```
 
-### Override Components
+### Override FlowComponent Instances
 
 ```python
 from fastapi_request_pipeline import OverrideFlow
@@ -365,7 +365,7 @@ public_flow = Flow(
 final = merge_flows(protected_flow, public_flow)
 ```
 
-### Disable Components
+### Disable FlowComponent Instances
 
 ```python
 from fastapi_request_pipeline import DisableFlow, ComponentCategory
@@ -378,9 +378,9 @@ no_throttle_flow = Flow(
 final = merge_flows(app_flow, no_throttle_flow)
 ```
 
-## Custom Components
+## Custom FlowComponent
 
-Create custom components by subclassing `FlowComponent`:
+Create custom FlowComponent subclasses by extending `FlowComponent`:
 
 ```python
 from fastapi_request_pipeline import FlowComponent, ComponentCategory, RequestContext
@@ -406,7 +406,7 @@ flow = Flow(
 
 ## Hooks
 
-Hooks allow you to observe and react to flow execution:
+FlowHook instances allow you to observe and react to Flow execution:
 
 ```python
 from fastapi_request_pipeline import FlowHook, AfterFlow, BeforeFlow, AfterComponent
@@ -434,7 +434,7 @@ flow.add_hook(MetricsHook())
 
 ## Debug Mode
 
-Enable debug mode for detailed execution traces:
+Enable debug mode for detailed FlowTrace output:
 
 ```python
 flow = Flow(
@@ -454,7 +454,7 @@ async def endpoint(ctx: RequestContext = Depends(flow_dependency(flow))):
 
 ## OpenAPI Integration
 
-The library automatically enriches your OpenAPI schema:
+`enrich_openapi` automatically enriches your OpenAPI schema:
 
 ```python
 from fastapi_request_pipeline import enrich_openapi
@@ -467,7 +467,7 @@ app = FastAPI()
 enrich_openapi(app)
 ```
 
-This adds:
+`enrich_openapi` adds:
 - Security schemes (JWT, API Key, Cookie)
 - Security requirements per endpoint
 - Error responses (401, 403, 429, etc.)
@@ -476,7 +476,7 @@ This adds:
 
 ## Error Handling
 
-The library provides specific exceptions:
+The library provides specific FlowAbort subclasses:
 
 ```python
 from fastapi_request_pipeline import (
@@ -507,15 +507,15 @@ async def auth_failed_handler(request: Request, exc: AuthenticationFailed):
 
 1. **Define flows at module level** - Create them once, reuse across endpoints
 2. **Use merge_flows for composition** - Layer app, router, and route flows
-3. **Keep components focused** - One responsibility per component
-4. **Use debug mode in development** - Enable tracing to understand flow execution
+3. **Keep FlowComponent instances focused** - One responsibility per FlowComponent
+4. **Use debug mode in development** - Enable FlowTrace to understand Flow execution
 5. **Call enrich_openapi** - Automatically document your API security
 6. **Use custom backends for production** - Replace `InMemoryThrottleBackend` with Redis
-7. **Test flows in isolation** - Components are async functions, easy to unit test
+7. **Test Flow instances in isolation** - FlowComponent instances are async callables, easy to unit test
 
 ## Testing
 
-Test flows without FastAPI:
+Test Flow instances without FastAPI:
 
 ```python
 from starlette.requests import Request
