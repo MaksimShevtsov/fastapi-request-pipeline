@@ -35,6 +35,7 @@ Feature 001-request-pipeline is implemented with full test coverage (198 tests).
 ## Active Technologies
 - Python 3.11+ + FastAPI 0.100+, Pydantic V2 (via FastAPI), Starlette (via FastAPI) (001-request-pipeline)
 - N/A — library operates in-memory; throttling uses pluggable backend with in-memory default (001-request-pipeline)
+- Docs only (Markdown); no runtime dependencies / no code changes (001-llm-docs)
 
 ## Recent Changes
 - 001-request-pipeline: Added Python 3.11+ + FastAPI 0.100+, Pydantic V2 (via FastAPI), Starlette (via FastAPI)

@@ -1,0 +1,15 @@
+# fastapi-request-pipeline
+
+> A composable, type-safe request processing pipeline for FastAPI. Build clean, maintainable APIs with reusable components for authentication, permissions, rate limiting, and more.
+
+## Documentation
+
+- [Quick Start Guide](docs/quickstart.md): Get started with fastapi-request-pipeline in 5 minutes.
+- [User Guide](docs/user-guide.md): Comprehensive guide covering all features and usage patterns.
+- [API Reference](docs/api-reference.md): Complete API documentation for all classes, functions, and exceptions.
+- [Glossary](docs/glossary.md): Canonical definitions for all core concepts and terms.
+
+## Optional
+
+- [Documentation Index](docs/README.md): Overview of available documentation and example links.
+- [CI/CD and Deployment](docs/deployment.md): GitHub Actions workflows and PyPI publishing setup.

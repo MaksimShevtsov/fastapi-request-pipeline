@@ -38,9 +38,9 @@ flow = Flow(
 )
 ```
 
-### Components
+### FlowComponent
 
-Components implement the `FlowComponent` interface and belong to a category:
+FlowComponent is the base class for all processing units in a Flow. Each FlowComponent belongs to a ComponentCategory:
 
 - **AUTHENTICATION** (order: 1) - Identity verification
 - **PERMISSION** (order: 2) - Authorization checks
@@ -52,7 +52,7 @@ Components implement the `FlowComponent` interface and belong to a category:
 
 ### RequestContext
 
-The context object passed through the pipeline:
+A per-request data container passed through the Flow during execution:
 
 ```python
 @dataclass
@@ -62,9 +62,9 @@ class RequestContext:
     state: dict[str, Any]     # Arbitrary storage
 ```
 
-### Flow Dependency
+### flow_dependency
 
-Convert a flow to a FastAPI dependency:
+Convert a Flow into a FastAPI-compatible async dependency:
 
 ```python
 @app.get("/endpoint")
@@ -76,26 +76,26 @@ async def endpoint(
 
 ## Component Categories
 
-### Built-in Authentication Components
+### Authentication Components
 
 - `JWTAuthentication` - Bearer token authentication
 - `APIKeyAuthentication` - API key in headers
 - `CookieAuthentication` - Session cookies
 - `AllowAnonymous` - Skip authentication
 
-### Built-in Permission Components
+### Permission Components
 
 - `Authenticated` - Require non-null user
 - `HasRole` - Check user role
 - `HasPermission` - Check user permissions
 
-### Built-in Throttling Components
+### Throttling Components
 
 - `RateLimit` - Configurable rate limiting
 - `InMemoryThrottleBackend` - Default backend
 - `ThrottleBackend` - Protocol for custom backends
 
-### Built-in Filter/Pagination Components
+### Filter and Pagination Components
 
 - `QueryFilter` - Parse query string filters
 - `LimitOffset` - Offset-based pagination
@@ -104,7 +104,7 @@ async def endpoint(
 
 ### Flow Composition
 
-Merge flows from different levels:
+Use `merge_flows` to merge Flow instances from different levels:
 
 ```python
 final_flow = merge_flows(
@@ -121,7 +121,7 @@ final_flow = merge_flows(
 
 ### Hooks
 
-Observe flow execution:
+Observe Flow execution with FlowHook:
 
 ```python
 class MetricsHook(FlowHook):
@@ -141,7 +141,7 @@ flow.add_hook(MetricsHook())
 
 ### Debug Mode
 
-Enable detailed traces:
+Enable FlowTrace for detailed execution traces:
 
 ```python
 flow = Flow(..., debug=True)
@@ -159,7 +159,7 @@ Automatically enrich OpenAPI schema:
 enrich_openapi(app)  # Call after defining all routes
 ```
 
-This adds:
+`enrich_openapi` adds:
 - Security schemes
 - Security requirements per endpoint
 - Error responses (401, 403, 429, etc.)
@@ -171,7 +171,7 @@ This adds:
 1. **Define flows at module level** - Create once, reuse everywhere
 2. **Use composition** - Layer flows from app → router → route
 3. **Keep components focused** - Single responsibility principle
-4. **Use debug mode in development** - Understand execution flow
+4. **Use debug mode in development** - Understand Flow execution via FlowTrace
 5. **Call enrich_openapi()** - Auto-document security requirements
 6. **Use Redis for production** - Replace InMemoryThrottleBackend
 7. **Test components in isolation** - Easy unit testing
@@ -321,19 +321,19 @@ async def admin_endpoint(ctx: RequestContext = Depends(flow_dependency(admin_flo
 
 **Q: When should I use flows vs regular dependencies?**
 
-A: Use flows for cross-cutting concerns (auth, permissions, rate limiting). Use regular dependencies for business logic.
+A: Use Flow for cross-cutting concerns (authentication, permissions, rate limiting). Use regular dependencies for business logic.
 
 **Q: Can I use flows with other FastAPI features?**
 
-A: Yes! Flows work alongside regular dependencies, middleware, exception handlers, etc.
+A: Yes. Flow instances work alongside regular dependencies, middleware, exception handlers, and other FastAPI features.
 
 **Q: How do I handle multiple authentication methods?**
 
-A: Create separate flows and use them on different endpoints, or create a custom component that tries multiple methods.
+A: Create separate Flow instances and use them on different endpoints, or create a custom FlowComponent that tries multiple authentication methods.
 
 **Q: Can I modify the request in a component?**
 
-A: Components shouldn't modify the request itself, but can store data in `ctx.state` for later use.
+A: FlowComponent instances should not modify the request itself, but can store data in `RequestContext.state` for use by later components.
 
 **Q: How do I pass configuration to components?**
 

@@ -268,7 +268,7 @@ curl -H "Authorization: Bearer valid-token" \
 
 ## Debug Mode
 
-Enable debug mode to see detailed execution traces:
+Enable debug mode to see detailed execution traces via FlowTrace:
 
 ```python
 # Create flow with debug enabled
@@ -375,11 +375,11 @@ When deploying to production:
 
 **Q: My flow components aren't executing in the order I specified**
 
-A: Components are automatically sorted by category. Use `ctx.state["trace"]` in debug mode to see execution order.
+A: FlowComponent instances are automatically sorted by ComponentCategory. Use the FlowTrace in `ctx.state["trace"]` with debug mode enabled to see execution order.
 
 **Q: Rate limiting doesn't work across multiple workers**
 
-A: Use a Redis-backed `ThrottleBackend` instead of the default `InMemoryThrottleBackend`.
+A: Implement a Redis-backed ThrottleBackend instead of the default InMemoryThrottleBackend.
 
 **Q: OpenAPI schema doesn't show my security requirements**
 

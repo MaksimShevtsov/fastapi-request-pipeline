@@ -13,7 +13,7 @@ class Flow:
     ) -> None
 ```
 
-Ordered container of `FlowComponent` instances.
+An ordered container of `FlowComponent` instances that processes requests sequentially.
 
 **Parameters:**
 - `*components`: Variable number of components, flows, or composition directives
@@ -29,7 +29,7 @@ def add(
 ) -> Flow
 ```
 
-Add components to the flow. Returns self for chaining.
+Add components to the Flow. Returns self for chaining.
 
 #### add_hook
 
@@ -37,7 +37,7 @@ Add components to the flow. Returns self for chaining.
 def add_hook(self, hook: FlowHook) -> Flow
 ```
 
-Add a hook to observe flow execution. Returns self for chaining.
+Add a FlowHook to observe Flow execution. Returns self for chaining.
 
 #### resolve
 
@@ -45,7 +45,7 @@ Add a hook to observe flow execution. Returns self for chaining.
 def resolve(self) -> ResolvedFlow
 ```
 
-Resolve the flow into an immutable execution plan. Called automatically by `flow_dependency()`.
+Resolve the Flow into an immutable execution plan (ResolvedFlow). Called automatically by `flow_dependency()`.
 
 ---
 
@@ -62,7 +62,7 @@ class FlowComponent(ABC):
         return None
 ```
 
-Base class for all processing components.
+Base class for all processing units in a Flow.
 
 **Class Attributes:**
 - `category`: The component category (determines execution order)
@@ -75,7 +75,7 @@ Base class for all processing components.
 async def resolve(self, ctx: RequestContext) -> None
 ```
 
-Process the request context. Can modify `ctx.user` or `ctx.state`, or raise exceptions to abort.
+Process the RequestContext. The `resolve` method can modify `ctx.user` or `ctx.state`, or raise exceptions to abort the Flow.
 
 #### openapi_spec
 
@@ -83,7 +83,7 @@ Process the request context. Can modify `ctx.user` or `ctx.state`, or raise exce
 def openapi_spec(self) -> dict[str, Any] | None
 ```
 
-Return OpenAPI metadata for this component (security schemes, responses, etc.).
+Return OpenAPI metadata for the FlowComponent (security schemes, responses, etc.).
 
 ---
 
@@ -97,7 +97,7 @@ class RequestContext:
     state: dict[str, Any] = field(default_factory=dict)
 ```
 
-Per-request state container passed through the flow.
+Per-request data container passed through the Flow.
 
 **Attributes:**
 - `request`: Starlette `Request` object
@@ -119,7 +119,7 @@ class ComponentCategory(Enum):
     CUSTOM = "custom"                  # order: 7
 ```
 
-Component categories defining strict execution order.
+Enumeration that defines the execution order of FlowComponent instances within a Flow.
 
 ---
 
@@ -230,7 +230,7 @@ class HasRole(FlowComponent):
     def __init__(self, role: str) -> None
 ```
 
-Checks if user has required role.
+Checks whether the authenticated user has a specific role.
 
 Expects the user object (from `ctx.user`) to have a `roles` attribute or dict key containing a list/collection of role names.
 
@@ -254,7 +254,7 @@ class HasPermission(FlowComponent):
     def __init__(self, permission: str) -> None
 ```
 
-Checks if user has required permission.
+Checks whether the authenticated user has a specific permission.
 
 Expects the user object (from `ctx.user`) to have a `permissions` attribute or dict key containing a list/collection of permission names.
 
@@ -323,7 +323,7 @@ class ThrottleBackend(Protocol):
     async def reset(self, key: str) -> None: ...
 ```
 
-Pluggable storage interface for rate limit counters.
+Protocol (interface) for rate limit storage backends.
 
 **Methods:**
 
@@ -353,7 +353,7 @@ class InMemoryThrottleBackend:
     async def reset(self, key: str) -> None
 ```
 
-Default in-memory throttle backend. Single-process only, not suitable for production with multiple workers.
+Default in-memory ThrottleBackend implementation. Suitable for development and single-process deployments but not for multi-worker production environments.
 
 ---
 
@@ -370,7 +370,7 @@ class FeatureEnabled(FlowComponent):
     ) -> None
 ```
 
-Checks if feature is enabled for current request.
+Checks whether a named feature flag is enabled.
 
 **Parameters:**
 - `feature`: Feature flag name
@@ -502,7 +502,7 @@ Composition directive that removes all components of a given category.
 def flow_dependency(flow: Flow) -> Callable[..., Awaitable[RequestContext]]
 ```
 
-Return a FastAPI-compatible dependency that executes the flow.
+Return a FastAPI-compatible async dependency that executes the Flow.
 
 **Parameters:**
 - `flow`: Flow to execute
@@ -525,7 +525,7 @@ async def endpoint(ctx: RequestContext = Depends(flow_dependency(flow))):
 def enrich_openapi(app: FastAPI) -> None
 ```
 
-Enrich FastAPI app's OpenAPI schema with flow metadata.
+Enrich a FastAPI application's OpenAPI schema with metadata derived from Flow components.
 
 Call this after all routes are registered to inject security schemes, responses, parameters, and extensions from flow components.
 
@@ -550,7 +550,7 @@ class FlowHook(ABC):
     async def on_flow_end(self, ctx: RequestContext) -> None: ...
 ```
 
-Base class for flow execution hooks.
+Base class for Flow execution observers.
 
 **Methods:**
 
@@ -560,7 +560,7 @@ Base class for flow execution hooks.
 async def on_flow_start(self, ctx: RequestContext) -> None
 ```
 
-Called before flow execution starts.
+Called before Flow execution starts.
 
 #### on_component
 
@@ -573,7 +573,7 @@ async def on_component(
 ) -> None
 ```
 
-Called after each component executes. `error` is None on success.
+Called after each FlowComponent executes. The `error` parameter is None on success.
 
 #### on_flow_end
 
@@ -581,7 +581,7 @@ Called after each component executes. `error` is None on success.
 async def on_flow_end(self, ctx: RequestContext) -> None
 ```
 
-Called after flow execution completes (success or failure).
+Called after Flow execution completes (success or failure).
 
 ---
 
@@ -630,7 +630,7 @@ class FlowException(Exception):
     pass
 ```
 
-Base exception for all flow-related errors.
+Base exception class for all Flow-related errors.
 
 ---
 
@@ -641,7 +641,7 @@ class FlowAbort(FlowException):
     def __init__(self, detail: str, *, status_code: int = 400) -> None
 ```
 
-Base class for exceptions that abort flow and return HTTP error.
+Base class for exceptions that abort the Flow and return an HTTP error response.
 
 **Attributes:**
 - `status_code`: HTTP status code
@@ -708,7 +708,7 @@ class FlowInternalError(FlowException):
     def __init__(self, detail: str, cause: Exception | None = None) -> None
 ```
 
-Internal flow error (HTTP 500).
+Internal Flow error (HTTP 500).
 
 **Attributes:**
 - `detail`: Error message
@@ -729,7 +729,7 @@ class FlowTrace:
     error: Exception | None = None
 ```
 
-Execution trace available in debug mode.
+Dataclass that records the execution trace of a Flow when debug mode is enabled.
 
 **Access:**
 ```python
@@ -750,4 +750,4 @@ class TraceEntry:
     reason: str | None = None
 ```
 
-Individual component execution record.
+Dataclass that records an individual FlowComponent's execution within a FlowTrace.
