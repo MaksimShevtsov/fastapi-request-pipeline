@@ -1,6 +1,6 @@
 # Glossary
 
-Core concepts and canonical terms used throughout the fastapi-request-pipeline documentation. Each term has exactly one meaning; no synonyms are used.
+Core concepts and canonical terms used throughout the fastapi-request-pipeline documentation. Terms are defined here to encourage consistent usage across the project.
 
 ## Core Abstractions
 

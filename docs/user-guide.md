@@ -378,6 +378,8 @@ no_throttle_flow = Flow(
 final = merge_flows(app_flow, no_throttle_flow)
 ```
 
+<a id="custom-components"></a>
+
 ## Custom FlowComponent
 
 Create custom FlowComponent subclasses by extending `FlowComponent`:
@@ -511,7 +513,7 @@ async def auth_failed_handler(request: Request, exc: AuthenticationFailed):
 4. **Use debug mode in development** - Enable FlowTrace to understand Flow execution
 5. **Call enrich_openapi** - Automatically document your API security
 6. **Use custom backends for production** - Replace `InMemoryThrottleBackend` with Redis
-7. **Test Flow instances in isolation** - FlowComponent instances are async callables, easy to unit test
+7. **Test Flow instances in isolation** - FlowComponent instances expose an async `resolve(ctx)` method, making them easy to unit test
 
 ## Testing
 

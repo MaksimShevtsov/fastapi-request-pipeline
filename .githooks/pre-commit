@@ -1,0 +1,12 @@
+#!/bin/bash
+# Prevent commits to main branch
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$BRANCH" = "main" ]; then
+    echo "❌ ERROR: Direct commits to 'main' are not allowed."
+    echo "   Please create a feature branch and submit a pull request."
+    exit 1
+fi
+
+exit 0
