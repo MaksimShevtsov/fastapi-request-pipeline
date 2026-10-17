@@ -18,7 +18,7 @@ A per-request data container passed through the Flow during execution. RequestCo
 
 ### ComponentCategory
 
-An enumeration that defines the execution order of FlowComponent instances within a Flow. The categories, in order, are: AUTHENTICATION, PERMISSION, FEATURE, THROTTLING, FILTERS, PAGINATION, and CUSTOM.
+An enumeration that defines the execution order of FlowComponent instances within a Flow. The categories, in order, are: PRE_AUTH, AUTHENTICATION, PERMISSION, FEATURE, THROTTLING, FILTERS, PAGINATION, and CUSTOM.
 
 ### ResolvedFlow
 
@@ -66,7 +66,11 @@ A FlowComponent that checks whether a named feature flag is enabled. Accepts an 
 
 ### RateLimit
 
-A FlowComponent that enforces request rate limits using a pluggable ThrottleBackend. RateLimit tracks requests per key (user ID or IP address by default) within a configurable time window.
+A FlowComponent that enforces request rate limits using a pluggable ThrottleBackend. RateLimit tracks requests per key (the user's `sub`/`id`, or the client IP, by default) within a configurable time window.
+
+### PreAuthRateLimit
+
+A RateLimit in the PRE_AUTH category, keyed by client IP. Because it runs before authentication, it also counts requests with invalid credentials, which limits credential guessing.
 
 ### ThrottleBackend
 
@@ -90,15 +94,15 @@ A FlowComponent that parses `limit` and `offset` query parameters for offset-bas
 
 ### merge_flows
 
-A function that merges multiple Flow instances using last-writer-wins resolution by ComponentCategory. Later flows' component groups replace earlier flows' groups for the same category. OverrideFlow and DisableFlow directives are processed during the merge.
+A function that merges multiple Flow instances by ComponentCategory. PERMISSION components accumulate across flows; for every other category, later flows' component groups replace earlier flows' groups (last-writer-wins). OverrideFlow and DisableFlow directives are processed during the merge, and hooks from all flows are kept.
 
 ### OverrideFlow
 
-A composition directive that replaces all FlowComponent instances of a given ComponentCategory when used inside `merge_flows`. Wrap a FlowComponent in OverrideFlow to substitute an entire category.
+A composition directive that replaces all FlowComponent instances of a given ComponentCategory when used inside `merge_flows`. Wrap a FlowComponent in OverrideFlow to substitute an entire category. Using OverrideFlow outside `merge_flows` raises `ValueError`.
 
 ### DisableFlow
 
-A composition directive that removes all FlowComponent instances of a given ComponentCategory when used inside `merge_flows`. Pass a ComponentCategory to DisableFlow to eliminate that category from the merged result.
+A composition directive that removes all FlowComponent instances of a given ComponentCategory when used inside `merge_flows`. Pass a ComponentCategory to DisableFlow to eliminate that category from the merged result. Using DisableFlow outside `merge_flows` raises `ValueError`.
 
 ## Dependency Integration
 
@@ -152,7 +156,7 @@ A FlowAbort that signals a disabled feature flag. Returns HTTP 403.
 
 ### Throttled
 
-A FlowAbort that signals a rate limit has been exceeded. Returns HTTP 429. Includes an optional `retry_after` value indicating seconds until the limit resets.
+A FlowAbort that signals a rate limit has been exceeded. Returns HTTP 429. Includes an optional `retry_after` value indicating seconds until the limit resets, sent to the client as the `Retry-After` header.
 
 ### FlowInternalError
 

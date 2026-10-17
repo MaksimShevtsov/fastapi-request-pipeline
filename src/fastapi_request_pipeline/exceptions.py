@@ -10,10 +10,17 @@ class FlowException(Exception):
 class FlowAbort(FlowException):
     """Controlled abort with HTTP status code and detail."""
 
-    def __init__(self, detail: str, *, status_code: int = 400) -> None:
+    def __init__(
+        self,
+        detail: str,
+        *,
+        status_code: int = 400,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
+        self.headers = headers
 
 
 class AuthenticationFailed(FlowAbort):
@@ -43,7 +50,8 @@ class Throttled(FlowAbort):
     def __init__(
         self, detail: str = "Rate limit exceeded", *, retry_after: int | None = None
     ) -> None:
-        super().__init__(detail, status_code=429)
+        headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
+        super().__init__(detail, status_code=429, headers=headers)
         self.retry_after = retry_after
 
 

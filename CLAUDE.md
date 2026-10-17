@@ -8,7 +8,7 @@ fastapi-request-pipeline — a Python library for request processing pipelines i
 
 ## Status
 
-Feature 001-request-pipeline is implemented with full test coverage (198 tests).
+Feature 001-request-pipeline is implemented with full test coverage.
 
 ## Tooling
 

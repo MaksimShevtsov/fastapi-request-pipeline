@@ -18,7 +18,6 @@ A composable, type-safe request processing pipeline for FastAPI. Build clean, ma
 - **OpenAPI Integration** - Automatic OpenAPI schema enrichment with security requirements
 - **Debug Mode** - Detailed execution traces for development
 - **Extensible** - Easy to create custom FlowComponent subclasses
-- **Production Ready** - Comprehensive test suite and production usage
 
 ## Quick Start
 
@@ -66,7 +65,7 @@ enrich_openapi(app)
 
 ### Flow
 
-A `Flow` is an ordered container of FlowComponent instances that process requests sequentially. FlowComponent instances are automatically sorted by ComponentCategory to ensure proper execution order (authentication → permissions → feature flags → throttling → filters → pagination → custom).
+A `Flow` is an ordered container of FlowComponent instances that process requests sequentially. FlowComponent instances are automatically sorted by ComponentCategory to ensure proper execution order (pre-auth → authentication → permissions → feature flags → throttling → filters → pagination → custom).
 
 ```python
 flow = Flow(
@@ -91,10 +90,26 @@ Built-in FlowComponent classes:
 - `HasRole` - Role-based access control
 - `HasPermission` - Permission-based access control
 
+`HasRole` and `HasPermission` read `roles` / `permissions` from `ctx.user` (dict key or attribute). The value must be a list, tuple, set or frozenset; any other type, including a plain string, is denied.
+
+**Feature Flags**
+- `FeatureEnabled` - Require a feature flag to be on, via an async `checker` callback or `ctx.state["features"]`
+
 **Rate Limiting**
-- `RateLimit` - Configurable rate limiting with pluggable backends
-- `InMemoryThrottleBackend` - Default in-memory backend
+- `RateLimit` - Configurable rate limiting with pluggable backends. Keyed by the user's `sub` / `id` when authenticated, otherwise by client IP
+- `PreAuthRateLimit` - IP-keyed rate limit that runs *before* authentication, so requests with invalid credentials are counted too (limits credential guessing)
+- `InMemoryThrottleBackend` - Default in-memory fixed-window backend (single process; expired keys are evicted periodically)
 - Custom backends (e.g., Redis) via `ThrottleBackend` protocol
+
+Throttled requests get a `429` response with a `Retry-After` header.
+
+```python
+flow = Flow(
+    PreAuthRateLimit(rate=20, window_seconds=60),   # per IP, before auth
+    JWTAuthentication(decode=decode_jwt),
+    RateLimit(rate=100, window_seconds=60),          # per user, after auth
+)
+```
 
 **Filters & Pagination**
 - `QueryFilter` - Extract selected query parameters into RequestContext.state
@@ -119,9 +134,17 @@ admin_flow = Flow(HasRole("admin"))
 # Route-specific overrides
 public_flow = Flow(OverrideFlow(AllowAnonymous()))
 
-# Merge with last-writer-wins per category
 final_flow = merge_flows(app_flow, admin_flow, public_flow)
 ```
+
+Merge rules:
+
+- **PERMISSION components accumulate.** Checks from every merged flow all apply, so a router flow can never silently drop an app-level `HasRole`.
+- **Every other category is last-writer-wins.** A later flow's components for a category replace the earlier flow's components for that category.
+- `OverrideFlow(component)` replaces a category (including PERMISSION) and `DisableFlow(category)` removes it.
+- Hooks from all merged flows are kept.
+
+`OverrideFlow` and `DisableFlow` are only valid as top-level items of a flow passed to `merge_flows()`. Anywhere else (a plain `Flow` given to `flow_dependency`, or a nested `Flow`) they raise `ValueError`.
 
 ### Custom FlowComponent Subclasses
 
@@ -136,6 +159,10 @@ class AuditLog(FlowComponent):
     async def resolve(self, ctx: RequestContext) -> None:
         await log_request(ctx.user, ctx.request.url.path)
 ```
+
+### Logging
+
+The library logs under the `fastapi_request_pipeline` logger. Unexpected errors in components or hooks, which become a generic `500`, are logged at `ERROR` with a traceback. Flow aborts, and exceptions raised by authentication callbacks (`decode`, `lookup`, `validate`), are logged at `DEBUG`.
 
 ## Documentation
 

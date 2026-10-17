@@ -29,13 +29,14 @@ FlowComponent instances are processing units that implement specific functionali
 
 Built-in component categories (execution order):
 
-1. **AUTHENTICATION** - Verify identity
-2. **PERMISSION** - Check authorization
-3. **FEATURE** - Feature flags
-4. **THROTTLING** - Rate limiting
-5. **FILTERS** - Query filtering
-6. **PAGINATION** - Result pagination
-7. **CUSTOM** - Custom logic
+1. **PRE_AUTH** - Checks that must run before authentication (e.g. per-IP rate limiting)
+2. **AUTHENTICATION** - Verify identity
+3. **PERMISSION** - Check authorization
+4. **FEATURE** - Feature flags
+5. **THROTTLING** - Rate limiting
+6. **FILTERS** - Query filtering
+7. **PAGINATION** - Result pagination
+8. **CUSTOM** - Custom logic
 
 ### RequestContext
 
@@ -236,6 +237,22 @@ flow = Flow(
 )
 ```
 
+By default the key is the user's `sub` or `id` (dict key or attribute) when authenticated, otherwise the client IP. Throttled responses are `429` with a `Retry-After` header.
+
+### Limiting Credential Guessing
+
+`RateLimit` runs after authentication, so requests with bad credentials are rejected with `401` before they are counted. Add `PreAuthRateLimit`, which runs in the `PRE_AUTH` category ahead of authentication and is keyed by client IP:
+
+```python
+from fastapi_request_pipeline import PreAuthRateLimit
+
+flow = Flow(
+    PreAuthRateLimit(rate=20, window_seconds=60),  # every request, per IP
+    JWTAuthentication(decode=decode_jwt),
+    RateLimit(rate=100, window_seconds=60),         # authenticated, per user
+)
+```
+
 ### Custom Rate Limit Keys
 
 ```python
@@ -348,9 +365,14 @@ specific_flow = Flow(
     RateLimit(rate=10, window_seconds=60)  # Stricter limit
 )
 
-# Merge with last-writer-wins per category
+# PERMISSION accumulates; other categories are last-writer-wins
 final_flow = merge_flows(app_flow, admin_router_flow, specific_flow)
+# -> JWTAuthentication, HasRole("admin"), RateLimit(rate=10)
 ```
+
+PERMISSION components from every merged flow all apply, so a router-level check can never silently drop an app-level one. For every other category, a later flow's components replace the earlier group. Hooks from all merged flows are kept.
+
+`OverrideFlow` and `DisableFlow` are only valid as top-level items of a flow passed to `merge_flows()`. Putting them in a plain `Flow` given to `flow_dependency()`, or in a nested `Flow`, raises `ValueError`.
 
 ### Override FlowComponent Instances
 

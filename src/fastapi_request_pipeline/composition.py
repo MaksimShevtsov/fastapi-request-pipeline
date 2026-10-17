@@ -8,6 +8,11 @@ from fastapi_request_pipeline.component import ComponentCategory, FlowComponent
 
 if TYPE_CHECKING:
     from fastapi_request_pipeline.flow import Flow
+    from fastapi_request_pipeline.hooks import FlowHook
+
+# Categories whose components from all merged flows are combined instead of
+# replaced, so a router-level check never silently drops an app-level one.
+_ACCUMULATING_CATEGORIES = frozenset({ComponentCategory.PERMISSION})
 
 
 class OverrideFlow:
@@ -26,19 +31,25 @@ class DisableFlow:
 
 
 def merge_flows(*flows: Flow) -> Flow:
-    """Merge multiple flows with last-writer-wins by category.
+    """Merge multiple flows by category.
 
-    Later flows' component groups replace earlier flows' groups
-    for the same ComponentCategory. OverrideFlow and DisableFlow
-    directives are processed during merge.
+    Later flows' component groups replace earlier flows' groups for the
+    same ComponentCategory, except PERMISSION components, which accumulate
+    across flows. OverrideFlow and DisableFlow directives are processed
+    during merge and can replace or remove any category, including
+    PERMISSION. Hooks from all flows are kept, in order.
     """
     from fastapi_request_pipeline.flow import Flow
 
     category_groups: dict[ComponentCategory, list[FlowComponent]] = {}
+    hooks: list[FlowHook] = []
     debug = False
 
     for flow in flows:
         debug = debug or flow._debug
+        for hook in flow._hooks:
+            if not any(hook is h for h in hooks):
+                hooks.append(hook)
 
         # Collect this flow's contributions per category
         flow_categories: dict[ComponentCategory, list[FlowComponent]] = {}
@@ -55,9 +66,14 @@ def merge_flows(*flows: Flow) -> Flow:
             elif isinstance(item, FlowComponent):
                 flow_categories.setdefault(item.category, []).append(item)
 
-        # Apply regular components (last-writer-wins per category)
+        # Apply regular components (last-writer-wins per category,
+        # except accumulating categories)
         for cat, comps in flow_categories.items():
-            category_groups[cat] = comps
+            if cat in _ACCUMULATING_CATEGORIES:
+                group = category_groups.setdefault(cat, [])
+                group.extend(c for c in comps if not any(c is g for g in group))
+            else:
+                category_groups[cat] = comps
 
         # Apply directives
         for directive in directives:
@@ -71,4 +87,7 @@ def merge_flows(*flows: Flow) -> Flow:
     for cat in sorted(category_groups.keys(), key=lambda c: c.order):
         all_components.extend(category_groups[cat])
 
-    return Flow(*all_components, debug=debug)
+    merged = Flow(*all_components, debug=debug)
+    for hook in hooks:
+        merged.add_hook(hook)
+    return merged

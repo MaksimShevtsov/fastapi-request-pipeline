@@ -67,6 +67,19 @@ class TestHasPermission:
         with pytest.raises(PermissionDenied):
             await HasPermission("read").resolve(ctx)
 
+    async def test_string_permissions_do_not_match_substring(
+        self, make_request: Any
+    ) -> None:
+        ctx = RequestContext(
+            request=make_request(), user={"permissions": "tickets.read.all"}
+        )
+        with pytest.raises(PermissionDenied):
+            await HasPermission("tickets.read").resolve(ctx)
+
+    async def test_passes_with_set_permissions(self, make_request: Any) -> None:
+        ctx = RequestContext(request=make_request(), user={"permissions": {"read"}})
+        await HasPermission("read").resolve(ctx)
+
 
 class TestHasRole:
     def test_category_is_permission(self) -> None:
@@ -99,3 +112,19 @@ class TestHasRole:
         ctx = RequestContext(request=make_request(), user=User())
         with pytest.raises(PermissionDenied):
             await HasRole("admin").resolve(ctx)
+
+    async def test_string_roles_do_not_match_substring(self, make_request: Any) -> None:
+        ctx = RequestContext(request=make_request(), user={"roles": "superadmin"})
+        with pytest.raises(PermissionDenied):
+            await HasRole("admin").resolve(ctx)
+
+    async def test_string_role_equal_to_required_is_denied(
+        self, make_request: Any
+    ) -> None:
+        ctx = RequestContext(request=make_request(), user={"roles": "admin"})
+        with pytest.raises(PermissionDenied):
+            await HasRole("admin").resolve(ctx)
+
+    async def test_passes_with_tuple_roles(self, make_request: Any) -> None:
+        ctx = RequestContext(request=make_request(), user={"roles": ("admin",)})
+        await HasRole("admin").resolve(ctx)

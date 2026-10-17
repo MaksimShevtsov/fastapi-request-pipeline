@@ -17,6 +17,7 @@ from fastapi_request_pipeline.components.permissions import (
 )
 from fastapi_request_pipeline.components.throttling import (
     InMemoryThrottleBackend,
+    PreAuthRateLimit,
     RateLimit,
     ThrottleBackend,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "LimitOffset",
     "OverrideFlow",
     "PermissionDenied",
+    "PreAuthRateLimit",
     "QueryFilter",
     "RateLimit",
     "RequestContext",

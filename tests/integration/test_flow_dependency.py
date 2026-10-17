@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from fastapi_request_pipeline.component import ComponentCategory, FlowComponent
 from fastapi_request_pipeline.components.authentication import JWTAuthentication
+from fastapi_request_pipeline.components.throttling import PreAuthRateLimit, RateLimit
 from fastapi_request_pipeline.context import RequestContext
 from fastapi_request_pipeline.dependency import flow_dependency
 from fastapi_request_pipeline.flow import Flow
@@ -130,3 +131,32 @@ class TestFlowDependencyIntegration:
         resp = await _get(app)
         assert resp.status_code == 200
         assert resp.json()["user"] is None
+
+
+class TestRetryAfterHeader:
+    async def test_throttled_response_has_retry_after(self) -> None:
+        app = _make_app(Flow(RateLimit(rate=1, window_seconds=60)))
+        await _get(app)
+        resp = await _get(app)
+        assert resp.status_code == 429
+        assert 1 <= int(resp.headers["retry-after"]) <= 60
+
+    async def test_throttled_response_has_retry_after_in_debug(self) -> None:
+        app = _make_app(Flow(RateLimit(rate=1, window_seconds=60), debug=True))
+        await _get(app)
+        resp = await _get(app)
+        assert resp.status_code == 429
+        assert 1 <= int(resp.headers["retry-after"]) <= 60
+
+
+class TestPreAuthRateLimitIntegration:
+    async def test_failed_auth_attempts_are_throttled(self) -> None:
+        decode = AsyncMock(side_effect=Exception("bad"))
+        flow = Flow(JWTAuthentication(decode=decode), PreAuthRateLimit(rate=3))
+        app = _make_app(flow)
+        codes = [
+            (await _get(app, headers={"Authorization": "Bearer bad"})).status_code
+            for _ in range(5)
+        ]
+        assert codes == [401, 401, 401, 429, 429]
+        assert decode.await_count == 3

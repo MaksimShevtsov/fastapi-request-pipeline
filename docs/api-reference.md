@@ -47,6 +47,9 @@ def resolve(self) -> ResolvedFlow
 
 Resolve the Flow into an immutable execution plan (ResolvedFlow). Called automatically by `flow_dependency()`.
 
+**Raises:**
+- `ValueError` if the Flow (or a nested Flow) contains `OverrideFlow` or `DisableFlow`. These directives are only valid as top-level items of a Flow passed to `merge_flows()`.
+
 ---
 
 ### FlowComponent
@@ -110,13 +113,14 @@ Per-request data container passed through the Flow.
 
 ```python
 class ComponentCategory(Enum):
-    AUTHENTICATION = "authentication"  # order: 1
-    PERMISSION = "permission"          # order: 2
-    FEATURE = "feature"                # order: 3
-    THROTTLING = "throttling"          # order: 4
-    FILTERS = "filters"                # order: 5
-    PAGINATION = "pagination"          # order: 6
-    CUSTOM = "custom"                  # order: 7
+    PRE_AUTH = "pre_auth"              # order: 1
+    AUTHENTICATION = "authentication"  # order: 2
+    PERMISSION = "permission"          # order: 3
+    FEATURE = "feature"                # order: 4
+    THROTTLING = "throttling"          # order: 5
+    FILTERS = "filters"                # order: 6
+    PAGINATION = "pagination"          # order: 7
+    CUSTOM = "custom"                  # order: 8
 ```
 
 Enumeration that defines the execution order of FlowComponent instances within a Flow.
@@ -232,7 +236,7 @@ class HasRole(FlowComponent):
 
 Checks whether the authenticated user has a specific role.
 
-Expects the user object (from `ctx.user`) to have a `roles` attribute or dict key containing a list/collection of role names.
+Expects the user object (from `ctx.user`) to have a `roles` attribute or dict key containing a list, tuple, set or frozenset of role names. Any other type (including a plain string, which would otherwise match substrings) is treated as missing and denied.
 
 **Parameters:**
 - `role`: Role name to check
@@ -256,7 +260,7 @@ class HasPermission(FlowComponent):
 
 Checks whether the authenticated user has a specific permission.
 
-Expects the user object (from `ctx.user`) to have a `permissions` attribute or dict key containing a list/collection of permission names.
+Expects the user object (from `ctx.user`) to have a `permissions` attribute or dict key containing a list, tuple, set or frozenset of permission names. Any other type (including a plain string) is treated as missing and denied.
 
 **Parameters:**
 - `permission`: Permission name to check
@@ -292,24 +296,44 @@ Enforces rate limits with pluggable backend.
 **Parameters:**
 - `rate`: Maximum requests allowed per window
 - `window_seconds`: Time window in seconds (default: 60)
-- `key_func`: Function to generate rate limit key (default: IP or user ID)
+- `key_func`: Function to generate rate limit key (default: user `sub`/`id`, else client IP)
 - `backend`: Storage backend (default: `InMemoryThrottleBackend`)
 
 **Raises:**
-- `Throttled` (429) if rate limit exceeded
+- `Throttled` (429, with a `Retry-After` header) if rate limit exceeded
 - `ValueError` if rate or window_seconds <= 0
 
 **Default key function:**
+
+1. If `ctx.user` has a `sub` or `id` (dict key or attribute, checked in that order): `user:<value>`
+2. Otherwise the client IP: `ip:<request.client.host>`, falling back to the first `X-Forwarded-For` entry when there is no client, then `ip:unknown`
+
+The key never contains the whole user object, so re-issued tokens for the same user share one counter.
+
+---
+
+### PreAuthRateLimit
+
 ```python
-def default_key_func(ctx: RequestContext) -> str:
-    if ctx.user is not None:
-        return f"user:{ctx.user}"
-    if ctx.request.client:
-        return f"ip:{ctx.request.client.host}"
-    forwarded = ctx.request.headers.get("x-forwarded-for")
-    if forwarded:
-        return f"ip:{forwarded.split(',')[0].strip()}"
-    return "ip:unknown"
+class PreAuthRateLimit(RateLimit):
+    def __init__(
+        self,
+        rate: int,
+        window_seconds: int = 60,
+        *,
+        key_func: Callable[[RequestContext], str] | None = None,
+        backend: ThrottleBackend | None = None,
+    ) -> None
+```
+
+Rate limit in the `PRE_AUTH` category, which runs before authentication. Keyed by client IP by default. Because it runs first, requests with invalid credentials are counted too, which limits credential guessing. Use it alongside a per-user `RateLimit`:
+
+```python
+flow = Flow(
+    PreAuthRateLimit(rate=20, window_seconds=60),
+    JWTAuthentication(decode=decode_jwt),
+    RateLimit(rate=100, window_seconds=60),
+)
 ```
 
 ---
@@ -349,11 +373,20 @@ Reset counter for key.
 
 ```python
 class InMemoryThrottleBackend:
+    def __init__(
+        self,
+        *,
+        sweep_interval: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None
     async def increment(self, key: str, window_seconds: int) -> tuple[int, int]
     async def reset(self, key: str) -> None
+    def __len__(self) -> int
 ```
 
-Default in-memory ThrottleBackend implementation. Suitable for development and single-process deployments but not for multi-worker production environments.
+Default in-memory, fixed-window ThrottleBackend implementation. Suitable for development and single-process deployments but not for multi-worker production environments.
+
+Expired keys are evicted in a sweep that runs at most once every `sweep_interval` seconds, so memory is bounded by the keys active within one window. `len(backend)` returns the number of tracked keys.
 
 ---
 
@@ -454,9 +487,15 @@ ctx.state["pagination"] = {"limit": 50, "offset": 100}
 def merge_flows(*flows: Flow) -> Flow
 ```
 
-Merge multiple flows with last-writer-wins by category.
+Merge multiple flows by category.
 
-Later flows' component groups replace earlier flows' groups for the same `ComponentCategory`. `OverrideFlow` and `DisableFlow` directives are processed during merge.
+- `PERMISSION` components **accumulate**: checks from every flow all apply (the same instance is not added twice).
+- Every other category is **last-writer-wins**: a later flow's components for a category replace the earlier group.
+- `OverrideFlow` and `DisableFlow` directives are processed during merge and can replace or remove any category, including `PERMISSION`.
+- Hooks from all flows are kept, in order (the same instance is not added twice).
+
+**Raises:**
+- `ValueError` if a nested Flow contains `OverrideFlow` or `DisableFlow`
 
 **Parameters:**
 - `*flows`: Variable number of flows to merge
@@ -473,7 +512,7 @@ class OverrideFlow:
     def __init__(self, component: FlowComponent) -> None
 ```
 
-Composition directive that replaces all components of a given category.
+Composition directive that replaces all components of a given category. Only valid as a top-level item of a Flow passed to `merge_flows()`.
 
 **Parameters:**
 - `component`: Component to use as replacement
@@ -487,7 +526,7 @@ class DisableFlow:
     def __init__(self, category: ComponentCategory) -> None
 ```
 
-Composition directive that removes all components of a given category.
+Composition directive that removes all components of a given category. Only valid as a top-level item of a Flow passed to `merge_flows()`.
 
 **Parameters:**
 - `category`: Category to disable
@@ -638,7 +677,13 @@ Base exception class for all Flow-related errors.
 
 ```python
 class FlowAbort(FlowException):
-    def __init__(self, detail: str, *, status_code: int = 400) -> None
+    def __init__(
+        self,
+        detail: str,
+        *,
+        status_code: int = 400,
+        headers: dict[str, str] | None = None,
+    ) -> None
 ```
 
 Base class for exceptions that abort the Flow and return an HTTP error response.
@@ -646,6 +691,7 @@ Base class for exceptions that abort the Flow and return an HTTP error response.
 **Attributes:**
 - `status_code`: HTTP status code
 - `detail`: Error message
+- `headers`: Extra response headers (forwarded to the `HTTPException`)
 
 ---
 
@@ -694,10 +740,11 @@ class Throttled(FlowAbort):
     ) -> None
 ```
 
-Rate limit exceeded (HTTP 429).
+Rate limit exceeded (HTTP 429). When `retry_after` is set, the response includes a `Retry-After` header.
 
 **Attributes:**
 - `retry_after`: Seconds until rate limit resets
+- `headers`: `{"Retry-After": str(retry_after)}`, or `None`
 
 ---
 

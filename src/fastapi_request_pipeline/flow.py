@@ -74,4 +74,11 @@ class Flow:
                 Flow._flatten(item._items, out)
             elif isinstance(item, FlowComponent):
                 out.append(item)
-            # OverrideFlow and DisableFlow are handled by merge_flows, not here
+            else:
+                # OverrideFlow / DisableFlow only have meaning in merge_flows();
+                # silently skipping them would leave the flow stricter or looser
+                # than the author intended.
+                raise ValueError(
+                    f"{type(item).__name__} is only supported as a top-level item "
+                    "of a Flow passed to merge_flows()"
+                )

@@ -42,6 +42,7 @@ PUBLIC_SYMBOLS = [
     "HasRole",
     "FeatureEnabled",
     "RateLimit",
+    "PreAuthRateLimit",
     "QueryFilter",
     "LimitOffset",
     # Throttle backend
@@ -121,10 +122,10 @@ class TestPublicAPIContract:
         assert issubclass(FlowInternalError, FlowException)
         assert not issubclass(FlowInternalError, FlowAbort)
 
-    def test_component_category_has_seven_members(self) -> None:
+    def test_component_category_has_eight_members(self) -> None:
         from fastapi_request_pipeline import ComponentCategory
 
-        assert len(list(ComponentCategory)) == 7
+        assert len(list(ComponentCategory)) == 8
 
     def test_trace_entry_is_frozen(self) -> None:
         from fastapi_request_pipeline import ComponentCategory, TraceEntry

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from fastapi_request_pipeline.component import FlowComponent
 from fastapi_request_pipeline.context import RequestContext
 from fastapi_request_pipeline.exceptions import (
     FlowAbort,
@@ -19,16 +21,15 @@ from fastapi_request_pipeline.flow import Flow, ResolvedFlow
 from fastapi_request_pipeline.openapi import collect_openapi_metadata
 from fastapi_request_pipeline.trace import FlowTrace, TraceEntry
 
+logger = logging.getLogger(__name__)
+
 
 def flow_dependency(flow: Flow) -> Callable[..., Awaitable[RequestContext]]:
     """Return a FastAPI-compatible dependency that executes the flow."""
     resolved = flow.resolve()
     metadata = collect_openapi_metadata(resolved)
 
-    if resolved.debug:
-        dep = _make_debug_dependency(resolved)
-    else:
-        dep = _make_dependency(resolved)
+    dep = _make_dependency(resolved)
 
     # Attach metadata for OpenAPI enrichment
     dep._flow_openapi_metadata = metadata  # type: ignore[attr-defined]
@@ -42,132 +43,116 @@ def _make_dependency(
 ) -> Callable[..., Awaitable[RequestContext]]:
     async def dependency(request: Request) -> RequestContext:
         ctx = RequestContext(request=request)
-
-        for hook in resolved.hooks:
-            await hook.on_flow_start(ctx)
-
-        try:
-            for component in resolved.components:
-                try:
-                    await component.resolve(ctx)
-                except FlowAbort as exc:
-                    for hook in resolved.hooks:
-                        await hook.on_component(ctx, component, exc)
-                    raise
-                else:
-                    for hook in resolved.hooks:
-                        await hook.on_component(ctx, component, None)
-        except FlowAbort as exc:
-            for hook in resolved.hooks:
-                await hook.on_flow_end(ctx)
-            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        except FlowException:
-            for hook in resolved.hooks:
-                await hook.on_flow_end(ctx)
-            raise
-        except Exception as exc:
-            for hook in resolved.hooks:
-                await hook.on_flow_end(ctx)
-            wrapped = FlowInternalError("Internal flow error", cause=exc)
-            raise HTTPException(status_code=500, detail=wrapped.detail) from wrapped
-
-        for hook in resolved.hooks:
-            await hook.on_flow_end(ctx)
-
-        return ctx
-
-    return dependency
-
-
-def _make_debug_dependency(
-    resolved: ResolvedFlow,
-) -> Callable[..., Awaitable[RequestContext]]:
-    async def dependency(request: Request) -> RequestContext:
-        ctx = RequestContext(request=request)
-        trace = FlowTrace()
+        trace: FlowTrace | None = None
+        if resolved.debug:
+            trace = FlowTrace()
+            ctx.state["trace"] = trace
         flow_start = time.perf_counter()
-
-        for hook in resolved.hooks:
-            await hook.on_flow_start(ctx)
+        error: FlowException | None = None
 
         try:
+            for hook in resolved.hooks:
+                await hook.on_flow_start(ctx)
             for component in resolved.components:
-                comp_start = time.perf_counter()
-                try:
-                    await component.resolve(ctx)
-                    elapsed = (time.perf_counter() - comp_start) * 1000
-                    trace.entries.append(
-                        TraceEntry(
-                            component_name=type(component).__name__,
-                            category=component.category,
-                            duration_ms=elapsed,
-                            outcome="OK",
-                        )
-                    )
-                    for hook in resolved.hooks:
-                        await hook.on_component(ctx, component, None)
-                except FlowAbort as exc:
-                    elapsed = (time.perf_counter() - comp_start) * 1000
-                    trace.entries.append(
-                        TraceEntry(
-                            component_name=type(component).__name__,
-                            category=component.category,
-                            duration_ms=elapsed,
-                            outcome="FAILED",
-                            reason=exc.detail,
-                        )
-                    )
-                    for hook in resolved.hooks:
-                        await hook.on_component(ctx, component, exc)
-                    trace.total_duration_ms = (time.perf_counter() - flow_start) * 1000
-                    trace.outcome = "ABORTED"
-                    trace.error = exc
-                    ctx.state["trace"] = trace
-                    for hook in resolved.hooks:
-                        await hook.on_flow_end(ctx)
-                    raise HTTPException(
-                        status_code=exc.status_code, detail=exc.detail
-                    ) from exc
-                except FlowException:
-                    for hook in resolved.hooks:
-                        await hook.on_flow_end(ctx)
-                    raise
-                except Exception as exc:
-                    elapsed = (time.perf_counter() - comp_start) * 1000
-                    trace.entries.append(
-                        TraceEntry(
-                            component_name=type(component).__name__,
-                            category=component.category,
-                            duration_ms=elapsed,
-                            outcome="FAILED",
-                            reason=str(exc),
-                        )
-                    )
-                    trace.total_duration_ms = (time.perf_counter() - flow_start) * 1000
-                    trace.outcome = "ERROR"
-                    wrapped = FlowInternalError("Internal flow error", cause=exc)
-                    trace.error = wrapped
-                    ctx.state["trace"] = trace
-                    for hook in resolved.hooks:
-                        await hook.on_flow_end(ctx)
-                    raise HTTPException(
-                        status_code=500, detail=wrapped.detail
-                    ) from wrapped
-        except HTTPException:
-            raise
-        except FlowException:
-            raise
+                await _run_component(resolved, ctx, component, trace)
+        except FlowException as exc:
+            error = exc
+        except Exception as exc:
+            logger.exception("Unexpected error in flow hook")
+            error = _internal_error(exc)
 
-        trace.total_duration_ms = (time.perf_counter() - flow_start) * 1000
-        trace.outcome = "OK"
-        ctx.state["trace"] = trace
+        if trace is not None:
+            _finish_trace(trace, flow_start, error)
 
-        for hook in resolved.hooks:
-            await hook.on_flow_end(ctx)
+        try:
+            for hook in resolved.hooks:
+                await hook.on_flow_end(ctx)
+        except Exception as exc:
+            logger.exception("Unexpected error in on_flow_end hook")
+            if error is None:
+                error = _internal_error(exc)
+                if trace is not None:
+                    _finish_trace(trace, flow_start, error)
 
-        return ctx
+        if error is None:
+            return ctx
+        if isinstance(error, FlowAbort):
+            raise HTTPException(
+                status_code=error.status_code,
+                detail=error.detail,
+                headers=error.headers,
+            ) from error
+        if isinstance(error, FlowInternalError):
+            raise HTTPException(status_code=500, detail=error.detail) from error
+        raise error
 
     return dependency
+
+
+async def _run_component(
+    resolved: ResolvedFlow,
+    ctx: RequestContext,
+    component: FlowComponent,
+    trace: FlowTrace | None,
+) -> None:
+    """Run one component, record it in the trace and notify hooks.
+
+    Raises the component's FlowException, or a FlowInternalError wrapping
+    any other exception, after the hooks have seen it.
+    """
+    name = type(component).__name__
+    start = time.perf_counter()
+    error: FlowException | None = None
+    reason: str | None = None
+    try:
+        await component.resolve(ctx)
+    except FlowAbort as exc:
+        logger.debug("Flow aborted by %s: %s %s", name, exc.status_code, exc.detail)
+        error = exc
+        reason = exc.detail
+    except FlowException as exc:
+        error = exc
+        reason = str(exc)
+    except Exception as exc:
+        logger.exception("Unexpected error in flow component %s", name)
+        error = _internal_error(exc)
+        reason = str(exc)
+
+    if trace is not None:
+        trace.entries.append(
+            TraceEntry(
+                component_name=name,
+                category=component.category,
+                duration_ms=(time.perf_counter() - start) * 1000,
+                outcome="OK" if error is None else "FAILED",
+                reason=reason,
+            )
+        )
+
+    for hook in resolved.hooks:
+        await hook.on_component(ctx, component, error)
+
+    if error is not None:
+        raise error
+
+
+def _internal_error(exc: Exception) -> FlowInternalError:
+    wrapped = FlowInternalError("Internal flow error", cause=exc)
+    wrapped.__cause__ = exc
+    return wrapped
+
+
+def _finish_trace(
+    trace: FlowTrace, flow_start: float, error: FlowException | None
+) -> None:
+    trace.total_duration_ms = (time.perf_counter() - flow_start) * 1000
+    trace.error = error
+    if error is None:
+        trace.outcome = "OK"
+    elif isinstance(error, FlowAbort):
+        trace.outcome = "ABORTED"
+    else:
+        trace.outcome = "ERROR"
 
 
 def enrich_openapi(app: Any) -> None:
