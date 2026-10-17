@@ -40,6 +40,15 @@ class TestJWTAuthentication:
         await comp.resolve(ctx)
         assert ctx.user == mock_decode.return_value
 
+    @pytest.mark.parametrize("scheme", ["bearer", "BEARER", "BeArEr"])
+    async def test_scheme_is_case_insensitive(
+        self, make_request: Any, mock_decode: AsyncMock, scheme: str
+    ) -> None:
+        request = make_request(headers={"Authorization": f"{scheme} my-token"})
+        ctx = RequestContext(request=request)
+        await JWTAuthentication(decode=mock_decode).resolve(ctx)
+        mock_decode.assert_awaited_once_with("my-token")
+
     async def test_raises_on_missing_header(self, make_request: Any) -> None:
         request = make_request()
         ctx = RequestContext(request=request)

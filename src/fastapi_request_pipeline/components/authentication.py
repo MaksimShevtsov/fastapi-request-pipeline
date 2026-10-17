@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi_request_pipeline.component import ComponentCategory, FlowComponent
 from fastapi_request_pipeline.context import RequestContext
 from fastapi_request_pipeline.exceptions import AuthenticationFailed
+
+logger = logging.getLogger(__name__)
 
 
 class JWTAuthentication(FlowComponent):
@@ -32,7 +35,8 @@ class JWTAuthentication(FlowComponent):
             raise AuthenticationFailed()
 
         parts = auth_value.split(" ", 1)
-        if len(parts) != 2 or parts[0] != self._scheme:
+        # Auth scheme names are case-insensitive (RFC 7235 §2.1)
+        if len(parts) != 2 or parts[0].lower() != self._scheme.lower():
             raise AuthenticationFailed()
 
         token = parts[1]
@@ -41,6 +45,7 @@ class JWTAuthentication(FlowComponent):
         except AuthenticationFailed:
             raise
         except Exception as exc:
+            logger.debug("%s callback failed", type(self).__name__, exc_info=True)
             raise AuthenticationFailed() from exc
 
     def openapi_spec(self) -> dict[str, Any] | None:
@@ -83,6 +88,7 @@ class CookieAuthentication(FlowComponent):
         except AuthenticationFailed:
             raise
         except Exception as exc:
+            logger.debug("%s callback failed", type(self).__name__, exc_info=True)
             raise AuthenticationFailed() from exc
 
     def openapi_spec(self) -> dict[str, Any] | None:
@@ -125,6 +131,7 @@ class APIKeyAuthentication(FlowComponent):
         except AuthenticationFailed:
             raise
         except Exception as exc:
+            logger.debug("%s callback failed", type(self).__name__, exc_info=True)
             raise AuthenticationFailed() from exc
 
     def openapi_spec(self) -> dict[str, Any] | None:

@@ -9,6 +9,7 @@ import pytest
 from fastapi_request_pipeline.component import ComponentCategory
 from fastapi_request_pipeline.components.throttling import (
     InMemoryThrottleBackend,
+    PreAuthRateLimit,
     RateLimit,
 )
 from fastapi_request_pipeline.context import RequestContext
@@ -49,6 +50,57 @@ class TestInMemoryThrottleBackend:
         await backend.increment("key1", 60)
         count, _ = await backend.increment("key2", 60)
         assert count == 1
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class TestInMemoryThrottleBackendEviction:
+    async def test_expired_keys_are_evicted(self) -> None:
+        clock = _FakeClock()
+        backend = InMemoryThrottleBackend(clock=clock, sweep_interval=30)
+        for i in range(100):
+            await backend.increment(f"ip:{i}", 10)
+        assert len(backend) == 100
+        clock.now += 60
+        await backend.increment("ip:new", 10)
+        assert len(backend) == 1
+
+    async def test_live_keys_are_kept(self) -> None:
+        clock = _FakeClock()
+        backend = InMemoryThrottleBackend(clock=clock, sweep_interval=30)
+        await backend.increment("short", 10)
+        await backend.increment("long", 3600)
+        clock.now += 60
+        await backend.increment("other", 10)
+        assert len(backend) == 2
+        count, _ = await backend.increment("long", 3600)
+        assert count == 2
+
+    async def test_no_sweep_before_interval(self) -> None:
+        clock = _FakeClock()
+        backend = InMemoryThrottleBackend(clock=clock, sweep_interval=300)
+        await backend.increment("a", 10)
+        clock.now += 60
+        await backend.increment("b", 10)
+        assert len(backend) == 2
+
+    async def test_expired_window_restarts_count(self) -> None:
+        clock = _FakeClock()
+        backend = InMemoryThrottleBackend(clock=clock)
+        await backend.increment("a", 10)
+        await backend.increment("a", 10)
+        clock.now += 11
+        assert await backend.increment("a", 10) == (1, 10)
+
+    def test_rejects_non_positive_sweep_interval(self) -> None:
+        with pytest.raises(ValueError):
+            InMemoryThrottleBackend(sweep_interval=0)
 
 
 class TestRateLimit:
@@ -105,3 +157,79 @@ class TestRateLimit:
         request = make_request(headers={"x-forwarded-for": "1.2.3.4"})
         ctx = RequestContext(request=request)
         await comp.resolve(ctx)  # should not raise
+
+
+class TestDefaultKeyFunc:
+    async def test_dict_user_keyed_by_sub_not_whole_payload(
+        self, make_request: Any
+    ) -> None:
+        comp = RateLimit(rate=1, window_seconds=60)
+        request = make_request()
+        await comp.resolve(
+            RequestContext(request=request, user={"sub": "u1", "iat": 1})
+        )
+        with pytest.raises(Throttled):
+            await comp.resolve(
+                RequestContext(request=request, user={"sub": "u1", "iat": 2})
+            )
+
+    async def test_dict_user_keyed_by_id(self, make_request: Any) -> None:
+        comp = RateLimit(rate=1, window_seconds=60)
+        request = make_request()
+        await comp.resolve(RequestContext(request=request, user={"id": 7, "v": 1}))
+        with pytest.raises(Throttled):
+            await comp.resolve(RequestContext(request=request, user={"id": 7, "v": 2}))
+
+    async def test_object_user_keyed_by_id_attr(self, make_request: Any) -> None:
+        class User:
+            def __init__(self, id: str) -> None:
+                self.id = id
+
+        comp = RateLimit(rate=1, window_seconds=60)
+        request = make_request()
+        await comp.resolve(RequestContext(request=request, user=User("u1")))
+        with pytest.raises(Throttled):
+            await comp.resolve(RequestContext(request=request, user=User("u1")))
+
+    async def test_different_users_have_separate_limits(
+        self, make_request: Any
+    ) -> None:
+        comp = RateLimit(rate=1, window_seconds=60)
+        request = make_request()
+        await comp.resolve(RequestContext(request=request, user={"sub": "u1"}))
+        await comp.resolve(RequestContext(request=request, user={"sub": "u2"}))
+
+    async def test_user_without_identity_falls_back_to_ip(
+        self, make_request: Any
+    ) -> None:
+        comp = RateLimit(rate=1, window_seconds=60)
+
+        def ctx(user: object) -> RequestContext:
+            request = make_request(headers={"x-forwarded-for": "1.2.3.4"})
+            return RequestContext(request=request, user=user)
+
+        await comp.resolve(ctx(object()))
+        with pytest.raises(Throttled):
+            await comp.resolve(ctx(object()))
+
+
+class TestPreAuthRateLimit:
+    def test_category_is_pre_auth(self) -> None:
+        assert PreAuthRateLimit(rate=10).category == ComponentCategory.PRE_AUTH
+
+    async def test_keys_by_ip_even_when_user_set(self, make_request: Any) -> None:
+        comp = PreAuthRateLimit(rate=1, window_seconds=60)
+
+        def ctx(user: object) -> RequestContext:
+            request = make_request(headers={"x-forwarded-for": "1.2.3.4"})
+            return RequestContext(request=request, user=user)
+
+        await comp.resolve(ctx({"sub": "u1"}))
+        with pytest.raises(Throttled):
+            await comp.resolve(ctx({"sub": "u2"}))
+
+    async def test_separate_ips_have_separate_limits(self, make_request: Any) -> None:
+        comp = PreAuthRateLimit(rate=1, window_seconds=60)
+        for ip in ("1.1.1.1", "2.2.2.2"):
+            request = make_request(headers={"x-forwarded-for": ip})
+            await comp.resolve(RequestContext(request=request))

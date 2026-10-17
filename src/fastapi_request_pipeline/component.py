@@ -12,6 +12,7 @@ from fastapi_request_pipeline.context import RequestContext
 class ComponentCategory(Enum):
     """Processing component categories, defining strict execution order."""
 
+    PRE_AUTH = "pre_auth"
     AUTHENTICATION = "authentication"
     PERMISSION = "permission"
     FEATURE = "feature"
@@ -23,13 +24,14 @@ class ComponentCategory(Enum):
     @property
     def order(self) -> int:
         _ORDER = {
-            "authentication": 1,
-            "permission": 2,
-            "feature": 3,
-            "throttling": 4,
-            "filters": 5,
-            "pagination": 6,
-            "custom": 7,
+            "pre_auth": 1,
+            "authentication": 2,
+            "permission": 3,
+            "feature": 4,
+            "throttling": 5,
+            "filters": 6,
+            "pagination": 7,
+            "custom": 8,
         }
         return _ORDER[self.value]
 

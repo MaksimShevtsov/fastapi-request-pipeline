@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+
 from fastapi_request_pipeline.component import ComponentCategory, FlowComponent
 from fastapi_request_pipeline.composition import DisableFlow, OverrideFlow, merge_flows
 from fastapi_request_pipeline.context import RequestContext
+from fastapi_request_pipeline.dependency import flow_dependency
 from fastapi_request_pipeline.flow import Flow
+from fastapi_request_pipeline.hooks import FlowHook
 
 
 class _AuthStub(FlowComponent):
@@ -120,15 +124,80 @@ class TestMergeFlows:
         assert ComponentCategory.THROTTLING not in categories
 
     def test_multiple_components_per_category_replaced_as_group(self) -> None:
+        a1 = _AuthStub()
+        a2 = _AuthStub()
+        a3 = _AuthStub()
+        merged = merge_flows(Flow(a1, a2), Flow(a3))
+        assert merged.resolve().components == (a3,)
+
+    def test_permission_components_accumulate(self) -> None:
         p1 = _PermStub()
         p2 = _PermStub()
         p3 = _PermStub()
-        f1 = Flow(p1, p2)
-        f2 = Flow(p3)
-        merged = merge_flows(f1, f2)
-        resolved = merged.resolve()
-        perm_components = [
-            c for c in resolved.components if c.category == ComponentCategory.PERMISSION
-        ]
-        assert len(perm_components) == 1
-        assert perm_components[0] is p3
+        merged = merge_flows(Flow(p1, p2), Flow(p3))
+        assert merged.resolve().components == (p1, p2, p3)
+
+    def test_same_permission_instance_not_duplicated(self) -> None:
+        perm = _PermStub()
+        base = Flow(perm)
+        merged = merge_flows(base, base)
+        assert merged.resolve().components == (perm,)
+
+    def test_override_replaces_accumulated_permissions(self) -> None:
+        p3 = _PermStub()
+        merged = merge_flows(
+            Flow(_PermStub()), Flow(_PermStub()), Flow(OverrideFlow(p3))
+        )
+        assert merged.resolve().components == (p3,)
+
+    def test_disable_removes_accumulated_permissions(self) -> None:
+        merged = merge_flows(
+            Flow(_PermStub()),
+            Flow(_PermStub()),
+            Flow(DisableFlow(ComponentCategory.PERMISSION)),
+        )
+        assert merged.resolve().components == ()
+
+    def test_permissions_added_after_override_accumulate(self) -> None:
+        p2 = _PermStub()
+        p3 = _PermStub()
+        merged = merge_flows(Flow(_PermStub()), Flow(OverrideFlow(p2)), Flow(p3))
+        assert merged.resolve().components == (p2, p3)
+
+    def test_hooks_are_preserved(self) -> None:
+        h1 = FlowHook()
+        h2 = FlowHook()
+        merged = merge_flows(Flow().add_hook(h1), Flow().add_hook(h2))
+        assert merged.resolve().hooks == (h1, h2)
+
+    def test_same_hook_instance_not_duplicated(self) -> None:
+        hook = FlowHook()
+        base = Flow().add_hook(hook)
+        merged = merge_flows(base, base)
+        assert merged.resolve().hooks == (hook,)
+
+    def test_directive_in_nested_flow_raises(self) -> None:
+        nested = Flow(DisableFlow(ComponentCategory.THROTTLING))
+        with pytest.raises(ValueError, match="DisableFlow"):
+            merge_flows(Flow(_ThrottleStub()), Flow(nested))
+
+
+class TestDirectivesOutsideMerge:
+    def test_override_in_plain_flow_raises_on_resolve(self) -> None:
+        flow = Flow(_AuthStub(), OverrideFlow(_AuthStub()))
+        with pytest.raises(ValueError, match="OverrideFlow"):
+            flow.resolve()
+
+    def test_disable_in_plain_flow_raises_on_resolve(self) -> None:
+        flow = Flow(_ThrottleStub(), DisableFlow(ComponentCategory.THROTTLING))
+        with pytest.raises(ValueError, match="DisableFlow"):
+            flow.resolve()
+
+    def test_directive_in_nested_flow_raises_on_resolve(self) -> None:
+        flow = Flow(Flow(OverrideFlow(_AuthStub())))
+        with pytest.raises(ValueError, match="merge_flows"):
+            flow.resolve()
+
+    def test_flow_dependency_rejects_directive(self) -> None:
+        with pytest.raises(ValueError):
+            flow_dependency(Flow(OverrideFlow(_AuthStub())))

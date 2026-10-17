@@ -42,13 +42,14 @@ flow = Flow(
 
 FlowComponent is the base class for all processing units in a Flow. Each FlowComponent belongs to a ComponentCategory:
 
-- **AUTHENTICATION** (order: 1) - Identity verification
-- **PERMISSION** (order: 2) - Authorization checks
-- **FEATURE** (order: 3) - Feature flags
-- **THROTTLING** (order: 4) - Rate limiting
-- **FILTERS** (order: 5) - Query filtering
-- **PAGINATION** (order: 6) - Result pagination
-- **CUSTOM** (order: 7) - Custom logic
+- **PRE_AUTH** (order: 1) - Checks before authentication (e.g. IP rate limiting)
+- **AUTHENTICATION** (order: 2) - Identity verification
+- **PERMISSION** (order: 3) - Authorization checks
+- **FEATURE** (order: 4) - Feature flags
+- **THROTTLING** (order: 5) - Rate limiting
+- **FILTERS** (order: 6) - Query filtering
+- **PAGINATION** (order: 7) - Result pagination
+- **CUSTOM** (order: 8) - Custom logic
 
 ### RequestContext
 
@@ -91,7 +92,8 @@ async def endpoint(
 
 ### Throttling Components
 
-- `RateLimit` - Configurable rate limiting
+- `RateLimit` - Configurable rate limiting (per user, else per IP)
+- `PreAuthRateLimit` - Per-IP rate limiting that runs before authentication
 - `InMemoryThrottleBackend` - Default backend
 - `ThrottleBackend` - Protocol for custom backends
 
@@ -118,6 +120,8 @@ final_flow = merge_flows(
 
 - `OverrideFlow(component)` - Replace all components of a category
 - `DisableFlow(category)` - Remove all components of a category
+
+PERMISSION components accumulate across merged flows; other categories are last-writer-wins. Directives are only valid as top-level items of a flow passed to `merge_flows()`; anywhere else they raise `ValueError`.
 
 ### Hooks
 

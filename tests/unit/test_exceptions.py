@@ -34,6 +34,15 @@ class TestFlowAbort:
         assert issubclass(FlowAbort, FlowException)
 
 
+class TestFlowAbortHeaders:
+    def test_default_headers_none(self) -> None:
+        assert FlowAbort("x").headers is None
+
+    def test_custom_headers(self) -> None:
+        exc = FlowAbort("x", status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        assert exc.headers == {"WWW-Authenticate": "Bearer"}
+
+
 class TestAuthenticationFailed:
     def test_default_status_code_401(self) -> None:
         exc = AuthenticationFailed()
@@ -98,6 +107,13 @@ class TestThrottled:
 
     def test_is_flow_abort(self) -> None:
         assert issubclass(Throttled, FlowAbort)
+
+    def test_retry_after_sets_header(self) -> None:
+        exc = Throttled(retry_after=30)
+        assert exc.headers == {"Retry-After": "30"}
+
+    def test_no_retry_after_no_header(self) -> None:
+        assert Throttled().headers is None
 
 
 class TestFlowInternalError:

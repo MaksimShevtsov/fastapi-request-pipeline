@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any
 
 from fastapi_request_pipeline.component import ComponentCategory, FlowComponent
@@ -19,12 +20,17 @@ class Authenticated(FlowComponent):
             raise PermissionDenied()
 
 
-def _get_collection(user: object, attr: str) -> list[str] | None:
-    """Extract a collection from user by dict key or attribute."""
-    if isinstance(user, dict):
-        val: list[str] | None = user.get(attr)
+def _get_collection(user: object, attr: str) -> Collection[str] | None:
+    """Extract a collection from user by dict key or attribute.
+
+    Only list, tuple, set and frozenset values are accepted. Anything else
+    (notably a plain string, where ``in`` would match substrings) is
+    treated as missing.
+    """
+    val = user.get(attr) if isinstance(user, dict) else getattr(user, attr, None)
+    if isinstance(val, (list, tuple, set, frozenset)):
         return val
-    return getattr(user, attr, None)
+    return None
 
 
 class HasPermission(FlowComponent):

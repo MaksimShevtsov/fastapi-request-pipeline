@@ -9,11 +9,12 @@ from fastapi_request_pipeline.context import RequestContext
 
 
 class TestComponentCategory:
-    def test_has_all_seven_members(self) -> None:
+    def test_has_all_eight_members(self) -> None:
         members = list(ComponentCategory)
-        assert len(members) == 7
+        assert len(members) == 8
 
     def test_member_values(self) -> None:
+        assert ComponentCategory.PRE_AUTH.value == "pre_auth"
         assert ComponentCategory.AUTHENTICATION.value == "authentication"
         assert ComponentCategory.PERMISSION.value == "permission"
         assert ComponentCategory.FEATURE.value == "feature"
@@ -25,6 +26,7 @@ class TestComponentCategory:
     def test_ordering(self) -> None:
         ordered = sorted(ComponentCategory, key=lambda c: c.order)
         assert ordered == [
+            ComponentCategory.PRE_AUTH,
             ComponentCategory.AUTHENTICATION,
             ComponentCategory.PERMISSION,
             ComponentCategory.FEATURE,
@@ -73,7 +75,6 @@ class TestFlowComponent:
         assert comp.openapi_spec() is None
 
     async def test_resolve_is_async(self, make_request: object) -> None:
-
         class AsyncComponent(FlowComponent):
             category = ComponentCategory.CUSTOM
 
